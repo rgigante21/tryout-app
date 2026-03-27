@@ -58,6 +58,7 @@ export const api = {
 
   // Admin
   ageGroups:     ()                            => request('GET',    '/admin/age-groups'),
+  createAgeGroup:(data)                        => request('POST',   '/admin/age-groups', data),
   events:        ()                            => request('GET',    '/admin/events'),
   createEvent:   (data)                        => request('POST',   '/admin/events', data),
   archiveEvent:  (id, archive)                 => request('PATCH',  `/admin/events/${id}/archive`, { archive }),
@@ -78,6 +79,7 @@ export const api = {
     return request('GET', `/session-blocks?${p}`);
   },
   createSessionBlock: (data) => request('POST', '/session-blocks', data),
+  updateSessionBlock: (id, data) => request('PATCH', `/session-blocks/${id}`, data),
   deleteSessionBlock: (id)   => request('DELETE', `/session-blocks/${id}`),
   reassignBlock:      (id)   => request('POST', `/session-blocks/${id}/reassign`),
   suggestRanges:      (id, slots) => request('GET', `/session-blocks/${id}/suggest-ranges?slots=${slots}`),

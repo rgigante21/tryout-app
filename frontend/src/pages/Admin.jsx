@@ -64,11 +64,12 @@ const STATUS_META = {
    SIDEBAR NAV
 ═══════════════════════════════════════════════════════ */
 const NAV_ITEMS = [
-  { id: 'overview',  label: 'Dashboard',  icon: '◆', section: 'overview' },
-  { id: 'events',    label: 'Events',     icon: '◷', section: 'tryouts' },
-  { id: 'sessions',  label: 'Sessions',   icon: '≡', section: 'tryouts' },
-  { id: 'group',     label: 'Roster',     icon: '▤', section: 'tryouts' },
-  { id: 'coaches',   label: 'Coaches',    icon: '◯', section: 'people' },
+  { id: 'overview',  label: 'Dashboard',   icon: '◆', section: 'overview' },
+  { id: 'events',    label: 'Events',      icon: '◷', section: 'tryouts' },
+  { id: 'sessions',  label: 'Sessions',    icon: '≡', section: 'tryouts' },
+  { id: 'group',     label: 'Age Groups',  icon: '▤', section: 'tryouts' },
+  { id: 'results',   label: 'Results',     icon: '★', section: 'tryouts' },
+  { id: 'coaches',   label: 'Coaches',     icon: '◯', section: 'people' },
 ];
 
 function Sidebar({ view, setView, user, logout }) {
@@ -264,6 +265,11 @@ export default function Admin() {
 
   /* Rankings */
   const [rankings, setRankings] = useState([]);
+
+  /* Age group creation */
+  const [showAddAgeGroup, setShowAddAgeGroup] = useState(false);
+  const [newAgeGroup, setNewAgeGroup] = useState({ name: '', code: '', sortOrder: '0' });
+  const [creatingAgeGroup, setCreatingAgeGroup] = useState(false);
 
   /* Bulk upload */
   const [bulkText, setBulkText]     = useState('');
@@ -615,6 +621,34 @@ export default function Admin() {
     const data = await api.eventStats(id); setEventStats(data);
   };
 
+  /* ── Block assignment change ── */
+  const changeBlockAssignment = async (blockId, data) => {
+    await api.updateSessionBlock(blockId, data);
+    // Reload sessions to reflect new player counts
+    if (activeGroup && activeEvent) {
+      await loadGroupData(activeGroup, activeEvent.id);
+    }
+    if (view === 'sessions') {
+      await loadAllSessions();
+    }
+  };
+
+  /* ── Age group CRUD ── */
+  const addAgeGroup = async () => {
+    if (!newAgeGroup.name || !newAgeGroup.code) return;
+    setCreatingAgeGroup(true);
+    try {
+      const r = await api.createAgeGroup({
+        name: newAgeGroup.name, code: newAgeGroup.code,
+        sortOrder: parseInt(newAgeGroup.sortOrder) || 0,
+      });
+      setAgeGroups(ag => [...ag, r.ageGroup].sort((a, b) => a.sort_order - b.sort_order));
+      setNewAgeGroup({ name: '', code: '', sortOrder: '0' });
+      setShowAddAgeGroup(false);
+    } catch (err) { alert(err.message); }
+    finally { setCreatingAgeGroup(false); }
+  };
+
   /* ── CSV import ── */
   const handleImportFile = async (e) => {
     const file = e.target.files?.[0];
@@ -692,55 +726,6 @@ export default function Admin() {
       <Sidebar view={view} setView={(v) => { setView(v); setShowBlockWizard(false); }} user={user} logout={logout} />
 
       <div style={A.main}>
-        {/* Top bar */}
-        <div style={A.topbar}>
-          <div style={A.topbarLeft}>
-            {view === 'group' && activeGroup && (
-              <button onClick={() => { setActiveGroup(null); }} style={A.backLink}>← Roster</button>
-            )}
-            {view === 'rankings' && (
-              <button onClick={() => setView('overview')} style={A.backLink}>← Overview</button>
-            )}
-            <h2 style={A.pageTitle}>
-              {view === 'overview'  && 'Dashboard'}
-              {view === 'sessions'  && 'Sessions'}
-              {view === 'events'    && 'Events'}
-              {view === 'group'     && (activeGroup ? activeGroup.name : 'Roster')}
-              {view === 'rankings'  && (activeGroup?.name + ' Rankings')}
-              {view === 'coaches'   && 'Coaches & Scorers'}
-            </h2>
-          </div>
-          <div style={A.topbarRight}>
-            {activeEvent && <span style={A.eventPill}>{activeEvent.name}</span>}
-            {view === 'sessions' && (
-              <button
-                onClick={() => { setShowBlockWizard(v => !v); }}
-                style={showBlockWizard ? A.ghostBtn : A.primaryBtn}
-              >
-                {showBlockWizard ? 'Cancel' : '+ Session Block'}
-              </button>
-            )}
-            {view === 'group' && (
-              <button onClick={() => { setShowBlockWizard(v => !v); setShowAddSession(false); }} style={showBlockWizard ? A.ghostBtn : A.primaryBtn}>
-                {showBlockWizard ? 'Cancel' : '+ Session Block'}
-              </button>
-            )}
-            {view === 'events' && (
-              <button onClick={() => setShowCreateEvent(v => !v)} style={showCreateEvent ? A.ghostBtn : A.primaryBtn}>
-                {showCreateEvent ? 'Cancel' : '+ New Event'}
-              </button>
-            )}
-            {view === 'coaches' && (
-              <button onClick={async () => {
-                if (activeEvent) {
-                  const r = await api.allSessions(null, activeEvent.id);
-                  setCoachViewSessions(r.sessions || []);
-                }
-              }} style={A.ghostBtn}>Refresh Sessions</button>
-            )}
-          </div>
-        </div>
-
         {/* ── Content area ── */}
         <div style={A.contentArea}>
 
@@ -749,6 +734,10 @@ export default function Admin() {
           {/* ════════════════ OVERVIEW ════════════════ */}
           {!loading && view === 'overview' && (
             <>
+              <div style={A.pageHdr}>
+                <h2 style={A.pageTitle}>Dashboard</h2>
+                {activeEvent && <span style={A.eventPill}>{activeEvent.name}</span>}
+              </div>
               {/* Metric cards */}
               {(() => {
                 const totalPlayers    = dashboard.reduce((s, d) => s + (d.total_players || 0), 0);
@@ -871,6 +860,18 @@ export default function Admin() {
           {/* ════════════════ SESSIONS PANEL ════════════════ */}
           {!loading && view === 'sessions' && (
             <>
+              <div style={A.pageHdr}>
+                <h2 style={A.pageTitle}>Sessions</h2>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {activeEvent && <span style={A.eventPill}>{activeEvent.name}</span>}
+                  <button
+                    onClick={() => { setShowBlockWizard(v => !v); }}
+                    style={showBlockWizard ? A.ghostBtn : A.primaryBtn}
+                  >
+                    {showBlockWizard ? 'Cancel' : '+ Session Block'}
+                  </button>
+                </div>
+              </div>
               {/* Block Wizard */}
               {showBlockWizard && (
                 <BlockWizardPanel
@@ -929,6 +930,7 @@ export default function Admin() {
                   setAssignUserId={setAssignUserId}
                   assignScorer={assignScorer}
                   unassignScorer={unassignScorer}
+                  onChangeAssignment={changeBlockAssignment}
                   fmt={fmt}
                   A={A}
                 />
@@ -938,7 +940,17 @@ export default function Admin() {
 
           {/* ════════════════ EVENTS ════════════════ */}
           {!loading && view === 'events' && (
-            <EventsPanel
+            <>
+              <div style={A.pageHdr}>
+                <h2 style={A.pageTitle}>Events</h2>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {activeEvent && <span style={A.eventPill}>{activeEvent.name}</span>}
+                  <button onClick={() => setShowCreateEvent(v => !v)} style={showCreateEvent ? A.ghostBtn : A.primaryBtn}>
+                    {showCreateEvent ? 'Cancel' : '+ New Event'}
+                  </button>
+                </div>
+              </div>
+              <EventsPanel
               events={events}
               activeEvent={activeEvent}
               newEvent={newEvent} setNewEvent={setNewEvent}
@@ -951,11 +963,50 @@ export default function Admin() {
               restoreEvent={async (id) => { await api.archiveEvent(id, false); const r = await api.events(); setEvents(r.events); }}
               fmt={fmt} A={A}
             />
+            </>
           )}
 
           {/* ════════════════ GROUP SETUP ════════════════ */}
           {!loading && view === 'group' && !activeGroup && (
             <>
+              <div style={A.pageHdr}>
+                <h2 style={A.pageTitle}>Age Groups</h2>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {activeEvent && <span style={A.eventPill}>{activeEvent.name}</span>}
+                  <button onClick={() => setShowAddAgeGroup(v => !v)} style={showAddAgeGroup ? A.ghostBtn : A.primaryBtn}>
+                    {showAddAgeGroup ? 'Cancel' : '+ New Age Group'}
+                  </button>
+                </div>
+              </div>
+              {showAddAgeGroup && (
+                <div style={{ ...A.card, marginBottom: 16 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>New Age Group</div>
+                  <div style={A.formRow}>
+                    <div style={{ flex: 2 }}>
+                      <label style={A.fieldLabel}>Name</label>
+                      <input placeholder="e.g. Mites (8U)" value={newAgeGroup.name}
+                        onChange={e => setNewAgeGroup(n => ({ ...n, name: e.target.value }))} />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <label style={A.fieldLabel}>Code</label>
+                      <input placeholder="e.g. 8U" value={newAgeGroup.code}
+                        onChange={e => setNewAgeGroup(n => ({ ...n, code: e.target.value }))} />
+                    </div>
+                    <div style={{ width: 90 }}>
+                      <label style={A.fieldLabel}>Sort order</label>
+                      <input type="number" min="0" value={newAgeGroup.sortOrder}
+                        onChange={e => setNewAgeGroup(n => ({ ...n, sortOrder: e.target.value }))} />
+                    </div>
+                  </div>
+                  <div style={{ marginTop: 10 }}>
+                    <button onClick={addAgeGroup}
+                      disabled={creatingAgeGroup || !newAgeGroup.name || !newAgeGroup.code}
+                      style={A.saveBtn}>
+                      {creatingAgeGroup ? 'Creating…' : 'Create Age Group'}
+                    </button>
+                  </div>
+                </div>
+              )}
               <div style={A.sectionHdr}>
                 <span style={A.sectionLabel}>Select an Age Group</span>
               </div>
@@ -983,7 +1034,17 @@ export default function Admin() {
             </>
           )}
           {!loading && view === 'group' && activeGroup && (
-            <GroupPanel
+            <>
+              <div style={A.pageHdr}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <button onClick={() => { setActiveGroup(null); }} style={A.backLink}>← Age Groups</button>
+                  <h2 style={A.pageTitle}>{activeGroup.name}</h2>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {activeEvent && <span style={A.eventPill}>{activeEvent.name}</span>}
+                </div>
+              </div>
+              <GroupPanel
               activeGroup={activeGroup} activeEvent={activeEvent}
               sessions={sessions} players={players}
               sessionScorers={sessionScorers} users={users}
@@ -1008,6 +1069,7 @@ export default function Admin() {
               assigningTo={assigningTo} setAssigningTo={setAssigningTo}
               assignUserId={assignUserId} setAssignUserId={setAssignUserId}
               assignScorer={assignScorer} unassignScorer={unassignScorer}
+              onChangeAssignment={changeBlockAssignment}
               showImport={showImport} setShowImport={setShowImport}
               importFile={importFile} importPreview={importPreview}
               importSummary={importSummary} importRunning={importRunning}
@@ -1018,16 +1080,38 @@ export default function Admin() {
               bulkUploading={bulkUploading} parseBulkText={parseBulkText} submitBulk={submitBulk}
               fmt={fmt} A={A}
             />
+            </>
           )}
 
           {/* ════════════════ RANKINGS ════════════════ */}
           {!loading && view === 'rankings' && (
-            <RankingsPanel rankings={rankings} activeGroup={activeGroup} A={A} />
+            <>
+              <div style={A.pageHdr}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <button onClick={() => setView('overview')} style={A.backLink}>← Overview</button>
+                  <h2 style={A.pageTitle}>{activeGroup?.name} Rankings</h2>
+                </div>
+              </div>
+              <RankingsPanel rankings={rankings} activeGroup={activeGroup} A={A} />
+            </>
           )}
 
           {/* ════════════════ COACHES ════════════════ */}
           {!loading && view === 'coaches' && (
-            <CoachesPanel
+            <>
+              <div style={A.pageHdr}>
+                <h2 style={A.pageTitle}>Coaches & Scorers</h2>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {activeEvent && <span style={A.eventPill}>{activeEvent.name}</span>}
+                  <button onClick={async () => {
+                    if (activeEvent) {
+                      const r = await api.allSessions(null, activeEvent.id);
+                      setCoachViewSessions(r.sessions || []);
+                    }
+                  }} style={A.ghostBtn}>Refresh Sessions</button>
+                </div>
+              </div>
+              <CoachesPanel
               users={users}
               newCoach={newCoach} setNewCoach={setNewCoach}
               addCoach={addCoach} addingCoach={addingCoach}
@@ -1046,6 +1130,23 @@ export default function Admin() {
               editCoachMsg={editCoachMsg}
               fmt={fmt} A={A}
             />
+            </>
+          )}
+
+          {/* ════════════════ RESULTS ════════════════ */}
+          {!loading && view === 'results' && (
+            <>
+              <div style={A.pageHdr}>
+                <h2 style={A.pageTitle}>Results</h2>
+                {activeEvent && <span style={A.eventPill}>{activeEvent.name}</span>}
+              </div>
+              <ResultsPanel
+                ageGroups={ageGroups} activeEvent={activeEvent}
+                openRankings={openRankings}
+                dashboard={dashboard} groupStats={groupStats}
+                A={A}
+              />
+            </>
           )}
         </div>
       </div>
@@ -1060,8 +1161,11 @@ function SessionCard({
   sess, scorers, users, editingSessionId, editSession, setEditSession,
   startEditSession, saveSessionEdit, cancelEdit, updateStatus, removeSession,
   assigningTo, setAssigningTo, assignUserId, setAssignUserId, assignScorer, unassignScorer,
+  onChangeAssignment,
   fmt, A,
 }) {
+  const [showAssignmentEdit, setShowAssignmentEdit] = useState(false);
+  const [changingAssignment, setChangingAssignment] = useState(false);
   const sm = STATUS_META[sess.status] || STATUS_META.pending;
   const isEditing   = editingSessionId === sess.id;
   const isAssigning = assigningTo === sess.id;
@@ -1171,6 +1275,58 @@ function SessionCard({
           </button>
         )}
       </div>
+
+      {/* Player assignment editing */}
+      {sess.block_id && onChangeAssignment && (
+        <div style={{ marginTop: 8, borderTop: '1px solid var(--border)', paddingTop: 8 }}>
+          {!showAssignmentEdit ? (
+            <button onClick={() => setShowAssignmentEdit(true)} style={{ ...A.addScorerBtn, borderColor: 'var(--blue)', color: 'var(--blue-txt)' }}>
+              Edit Player Assignment
+            </button>
+          ) : (
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text2)' }}>Reassign players:</span>
+              {sess.session_type === 'skills' ? (
+                <>
+                  {['last_name', 'jersey_range', 'none', 'manual'].map(method => (
+                    <button key={method} onClick={async () => {
+                      setChangingAssignment(true);
+                      try {
+                        await onChangeAssignment(sess.block_id, { splitMethod: method });
+                      } finally {
+                        setChangingAssignment(false);
+                        setShowAssignmentEdit(false);
+                      }
+                    }} disabled={changingAssignment}
+                      style={{ ...A.splitBtn, fontSize: 11, padding: '4px 10px', border: '1px solid var(--border)', background: 'var(--bg3)', cursor: 'pointer' }}>
+                      {method === 'last_name' ? 'By Last Name' : method === 'jersey_range' ? 'By Jersey #' : method === 'none' ? 'All Together' : 'Manual'}
+                    </button>
+                  ))}
+                </>
+              ) : (
+                <>
+                  {['random', 'manual'].map(method => (
+                    <button key={method} onClick={async () => {
+                      setChangingAssignment(true);
+                      try {
+                        await onChangeAssignment(sess.block_id, { playerAssignment: method });
+                      } finally {
+                        setChangingAssignment(false);
+                        setShowAssignmentEdit(false);
+                      }
+                    }} disabled={changingAssignment}
+                      style={{ ...A.splitBtn, fontSize: 11, padding: '4px 10px', border: '1px solid var(--border)', background: 'var(--bg3)', cursor: 'pointer' }}>
+                      {method === 'random' ? 'Random' : 'Manual'}
+                    </button>
+                  ))}
+                </>
+              )}
+              <button onClick={() => setShowAssignmentEdit(false)} style={{ ...A.ghostBtn, fontSize: 11, padding: '4px 10px' }}>Cancel</button>
+              {changingAssignment && <span style={{ fontSize: 11, color: 'var(--text3)' }}>Updating…</span>}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -1419,6 +1575,7 @@ function GroupPanel({
   editingSessionId, editSession, setEditSession, startEditSession, saveSessionEdit, cancelEdit,
   updateStatus, removeSession, assigningTo, setAssigningTo, assignUserId, setAssignUserId,
   assignScorer, unassignScorer,
+  onChangeAssignment,
   showImport, setShowImport, importFile, importPreview, importSummary, importRunning,
   importResult, importMsg, handleImportFile, commitImport, clearImport,
   fmt, A,
@@ -1492,6 +1649,7 @@ function GroupPanel({
           assigningTo={assigningTo} setAssigningTo={setAssigningTo}
           assignUserId={assignUserId} setAssignUserId={setAssignUserId}
           assignScorer={assignScorer} unassignScorer={unassignScorer}
+          onChangeAssignment={onChangeAssignment}
           fmt={fmt} A={A}
         />
       ))}
@@ -1757,6 +1915,81 @@ function RankingsPanel({ rankings, activeGroup, A }) {
 }
 
 /* ═══════════════════════════════════════════════════════
+   RESULTS PANEL
+═══════════════════════════════════════════════════════ */
+function ResultsPanel({ ageGroups, activeEvent, openRankings, dashboard, groupStats, A }) {
+  if (!activeEvent) return <div style={A.emptyCard}>No active event. Create an event first.</div>;
+
+  const allComplete = ageGroups.every(g => {
+    const stats = groupStats(g.code);
+    return stats.total_sessions > 0 && stats.complete_sessions === stats.total_sessions;
+  });
+
+  return (
+    <div>
+      {!allComplete && (
+        <div style={{ ...A.card, borderColor: 'var(--amber)', background: 'var(--amber-bg)', marginBottom: 16 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--amber-txt)', marginBottom: 4 }}>Tryouts In Progress</div>
+          <div style={{ fontSize: 13, color: 'var(--text2)' }}>
+            Not all age groups have completed their sessions. Results shown below reflect current scores.
+          </div>
+        </div>
+      )}
+      {allComplete && (
+        <div style={{ ...A.card, borderColor: 'var(--green)', background: 'var(--green-bg)', marginBottom: 16 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--green-txt)' }}>All Tryouts Complete</div>
+          <div style={{ fontSize: 13, color: 'var(--text2)', marginTop: 2 }}>
+            All age groups have finished their sessions. Final results are shown below.
+          </div>
+        </div>
+      )}
+      <div style={A.ageGroupGrid}>
+        {ageGroups.map(g => {
+          const stats = groupStats(g.code);
+          const pct = stats.total_sessions > 0
+            ? Math.round(stats.complete_sessions / stats.total_sessions * 100) : 0;
+          const isDone = stats.total_sessions > 0 && pct === 100;
+          return (
+            <div key={g.id} style={{ ...A.agCard, borderColor: isDone ? 'var(--green)' : 'var(--border)' }}
+              className="ag-card" onClick={() => openRankings(g)}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                <div style={A.agName}>{g.name}</div>
+                <span style={{
+                  fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 20,
+                  background: isDone ? '#E3F3EA' : '#FDF6E3',
+                  color: isDone ? '#145A3C' : '#6B4D0A',
+                  border: `1px solid ${isDone ? 'var(--green)' : 'var(--gold-dark)'}`,
+                }}>
+                  {isDone ? 'Complete' : `${pct}%`}
+                </span>
+              </div>
+              <div style={A.agStats}>
+                {[
+                  { val: stats.total_players, label: 'Players' },
+                  { val: stats.total_scores, label: 'Scores' },
+                  { val: stats.total_sessions, label: 'Sessions' },
+                ].map(({ val, label }) => (
+                  <div key={label} style={{ textAlign: 'center' }}>
+                    <div style={A.agStatVal}><CountUp end={val} duration={600} /></div>
+                    <div style={A.agStatLabel}>{label}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={A.progressTrack}>
+                <div style={{ ...A.progressFill, width: pct + '%', background: isDone ? 'var(--green)' : 'var(--maroon)' }} />
+              </div>
+              <div style={{ marginTop: 10, textAlign: 'center' }}>
+                <span style={A.agLink}>View Rankings →</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════
    COACHES PANEL
 ═══════════════════════════════════════════════════════ */
 function CoachesPanel({
@@ -1984,16 +2217,8 @@ const A = {
   shell: { display: 'flex', minHeight: '100vh', fontFamily: "'Nunito', sans-serif", background: 'var(--bg)' },
   main:  { flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 },
 
-  topbar: {
-    background: '#FFFFFF', borderBottom: '1px solid var(--border)',
-    padding: '0 28px', height: 58,
-    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-    position: 'sticky', top: 0, zIndex: 10,
-    boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
-  },
-  topbarLeft:  { display: 'flex', alignItems: 'center', gap: 12 },
-  topbarRight: { display: 'flex', alignItems: 'center', gap: 8 },
-  pageTitle:   { fontFamily: "'Barlow Condensed', sans-serif", fontSize: 24, fontWeight: 700, color: '#2D1F1F', letterSpacing: '0.03em' },
+  pageHdr:     { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  pageTitle:   { fontFamily: "'Barlow Condensed', sans-serif", fontSize: 28, fontWeight: 700, color: '#2D1F1F', letterSpacing: '0.03em', margin: 0 },
   backLink:    { background: 'none', border: 'none', color: 'var(--maroon)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', padding: 0 },
   eventPill:   { fontSize: 11, fontWeight: 700, background: '#FDF6E3', border: '1.5px solid var(--gold-dark)', borderRadius: 20, padding: '5px 14px', color: '#6B1E2E' },
 
