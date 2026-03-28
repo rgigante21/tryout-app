@@ -17,7 +17,7 @@ router.get('/age-groups', ...guard, async (req, res) => {
   }
 });
 
-// POST /api/admin/age-groups  — create a new age group
+// POST /api/admin/age-groups
 router.post('/age-groups', ...guard, async (req, res) => {
   const { name, code, sortOrder } = req.body;
   if (!name || !code) {
@@ -25,15 +25,12 @@ router.post('/age-groups', ...guard, async (req, res) => {
   }
   try {
     const r = await pool.query(
-      `INSERT INTO age_groups (name, code, sort_order)
-       VALUES ($1, $2, $3) RETURNING *`,
+      `INSERT INTO age_groups (name, code, sort_order) VALUES ($1, $2, $3) RETURNING *`,
       [name, code.toUpperCase(), sortOrder || 0]
     );
     res.status(201).json({ ageGroup: r.rows[0] });
   } catch (err) {
-    if (err.code === '23505') {
-      return res.status(409).json({ error: 'Age group code already exists' });
-    }
+    if (err.code === '23505') return res.status(409).json({ error: 'Age group code already exists' });
     res.status(500).json({ error: 'Server error' });
   }
 });
