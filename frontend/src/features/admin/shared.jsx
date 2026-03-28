@@ -35,6 +35,7 @@ export const NAV_ITEMS = [
   { id: 'events', label: 'Events', icon: '◷', section: 'tryouts', path: '/admin/events' },
   { id: 'sessions', label: 'Sessions', icon: '≡', section: 'tryouts', path: '/admin/sessions' },
   { id: 'groups', label: 'Age Groups', icon: '▤', section: 'tryouts', path: '/admin/groups' },
+  { id: 'results', label: 'Results', icon: '★', section: 'tryouts', path: '/admin/results' },
   { id: 'coaches', label: 'Coaches', icon: '◯', section: 'people', path: '/admin/coaches' },
 ];
 
@@ -158,7 +159,10 @@ export function SessionCard({
   setAssignUserId,
   assignScorer,
   unassignScorer,
+  onChangeAssignment,
 }) {
+  const [showAssignmentEdit, setShowAssignmentEdit] = useState(false);
+  const [changingAssignment, setChangingAssignment] = useState(false);
   const sm = STATUS_META[sess.status] || STATUS_META.pending;
   const isEditing = editingSessionId === sess.id;
   const isAssigning = assigningTo === sess.id;
@@ -268,6 +272,45 @@ export function SessionCard({
           </button>
         )}
       </div>
+
+      {sess.block_id && onChangeAssignment && (
+        <div style={{ marginTop: 8, borderTop: '1px solid var(--border)', paddingTop: 8 }}>
+          {!showAssignmentEdit ? (
+            <button onClick={() => setShowAssignmentEdit(true)} style={{ ...A.addScorerBtn, borderColor: 'var(--blue)', color: 'var(--blue-txt)' }}>
+              Edit Player Assignment
+            </button>
+          ) : (
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text2)' }}>Reassign players:</span>
+              {sess.session_type === 'skills' ? (
+                ['last_name', 'jersey_range', 'none', 'manual'].map((method) => (
+                  <button key={method} disabled={changingAssignment} style={{ ...A.splitBtn, fontSize: 11, padding: '4px 10px', border: '1px solid var(--border)', background: 'var(--bg3)', cursor: 'pointer' }}
+                    onClick={async () => {
+                      setChangingAssignment(true);
+                      try { await onChangeAssignment(sess.block_id, { splitMethod: method }); }
+                      finally { setChangingAssignment(false); setShowAssignmentEdit(false); }
+                    }}>
+                    {method === 'last_name' ? 'By Last Name' : method === 'jersey_range' ? 'By Jersey #' : method === 'none' ? 'All Together' : 'Manual'}
+                  </button>
+                ))
+              ) : (
+                ['random', 'manual'].map((method) => (
+                  <button key={method} disabled={changingAssignment} style={{ ...A.splitBtn, fontSize: 11, padding: '4px 10px', border: '1px solid var(--border)', background: 'var(--bg3)', cursor: 'pointer' }}
+                    onClick={async () => {
+                      setChangingAssignment(true);
+                      try { await onChangeAssignment(sess.block_id, { playerAssignment: method }); }
+                      finally { setChangingAssignment(false); setShowAssignmentEdit(false); }
+                    }}>
+                    {method === 'random' ? 'Random' : 'Manual'}
+                  </button>
+                ))
+              )}
+              <button onClick={() => setShowAssignmentEdit(false)} style={{ ...A.ghostBtn, fontSize: 11, padding: '4px 10px' }}>Cancel</button>
+              {changingAssignment && <span style={{ fontSize: 11, color: 'var(--text3)' }}>Updating…</span>}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

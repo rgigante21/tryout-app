@@ -284,8 +284,7 @@ router.post('/', ...guard, async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────
 // PATCH /api/session-blocks/:id
-// Update block settings (e.g. split_method, player_assignment)
-// Optionally re-assigns players when changing assignment method
+// Update block settings (split_method or player_assignment) and re-assign
 // ─────────────────────────────────────────────────────────────────────
 router.patch('/:id', ...guard, async (req, res) => {
   const { splitMethod, playerAssignment } = req.body;
@@ -300,36 +299,26 @@ router.patch('/:id', ...guard, async (req, res) => {
     }
     const block = blockRes.rows[0];
 
-    // Update split_method for skills blocks
     if (splitMethod && block.block_type === 'skills') {
       await client.query(
         'UPDATE session_blocks SET split_method = $1, updated_at = NOW() WHERE id = $2',
         [splitMethod, block.id]
       );
-
-      // Clear existing non-checked-in assignments and re-run
       await client.query(`
         DELETE FROM session_players
-        WHERE session_id IN (SELECT id FROM sessions WHERE block_id = $1)
-          AND checked_in = false
+        WHERE session_id IN (SELECT id FROM sessions WHERE block_id = $1) AND checked_in = false
       `, [block.id]);
-
       if (splitMethod !== 'manual') {
         await assignPlayersToBlock(client, block.id);
       }
     }
 
-    // Update player assignment for game blocks
     if (playerAssignment && block.block_type === 'game') {
-      // Clear existing non-checked-in assignments
       await client.query(`
         DELETE FROM session_players
-        WHERE session_id IN (SELECT id FROM sessions WHERE block_id = $1)
-          AND checked_in = false
+        WHERE session_id IN (SELECT id FROM sessions WHERE block_id = $1) AND checked_in = false
       `, [block.id]);
-
       if (playerAssignment === 'random') {
-        // Re-do random assignment
         const sessionsRes = await client.query(
           'SELECT id, home_team, away_team FROM sessions WHERE block_id = $1 ORDER BY start_time', [block.id]
         );
@@ -337,30 +326,24 @@ router.patch('/:id', ...guard, async (req, res) => {
           'SELECT team_number FROM game_teams WHERE block_id = $1 ORDER BY team_number', [block.id]
         );
         const playerRes = await client.query(
-          `SELECT id FROM players
-           WHERE age_group_id = $1 AND event_id = $2 AND will_tryout = true
-           ORDER BY RANDOM()`,
+          `SELECT id FROM players WHERE age_group_id = $1 AND event_id = $2 AND will_tryout = true ORDER BY RANDOM()`,
           [block.age_group_id, block.event_id]
         );
         const playerIds = playerRes.rows.map(r => r.id);
         const teamNums = teamsRes.rows.map(r => r.team_number);
-
         for (let i = 0; i < playerIds.length; i++) {
           const teamNum = teamNums[i % teamNums.length];
           for (const session of sessionsRes.rows) {
             await client.query(
-              `INSERT INTO session_players (session_id, player_id, team_number)
-               VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`,
+              `INSERT INTO session_players (session_id, player_id, team_number) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`,
               [session.id, playerIds[i], teamNum]
             );
           }
         }
       }
-      // If 'manual', we've already cleared — leave empty for manual assignment
     }
 
     await client.query('COMMIT');
-
     const updated = await pool.query('SELECT * FROM session_blocks WHERE id = $1', [req.params.id]);
     res.json({ block: updated.rows[0] });
   } catch (err) {

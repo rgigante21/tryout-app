@@ -10,22 +10,24 @@ import EventsView from '../features/admin/views/EventsView';
 import { GroupDetailView, GroupsIndexView } from '../features/admin/views/GroupsView';
 import RankingsView from '../features/admin/views/RankingsView';
 import CoachesView from '../features/admin/views/CoachesView';
+import ResultsView from '../features/admin/views/ResultsView';
 
 function getAdminRoute(pathname) {
-  const rankingsMatch = matchPath('/admin/groups/:groupId/rankings', pathname);
+  const rankingsMatch = matchPath('/admin/groups/:groupCode/rankings', pathname);
   if (rankingsMatch) {
-    return { view: 'rankings', groupId: rankingsMatch.params.groupId };
+    return { view: 'rankings', groupCode: rankingsMatch.params.groupCode };
   }
 
-  const groupMatch = matchPath('/admin/groups/:groupId', pathname);
+  const groupMatch = matchPath('/admin/groups/:groupCode', pathname);
   if (groupMatch) {
-    return { view: 'groupDetail', groupId: groupMatch.params.groupId };
+    return { view: 'groupDetail', groupCode: groupMatch.params.groupCode };
   }
 
   if (matchPath('/admin/groups', pathname)) return { view: 'groups' };
   if (matchPath('/admin/events', pathname)) return { view: 'events' };
   if (matchPath('/admin/sessions', pathname)) return { view: 'sessions' };
   if (matchPath('/admin/coaches', pathname)) return { view: 'coaches' };
+  if (matchPath('/admin/results', pathname)) return { view: 'results' };
   return { view: 'overview' };
 }
 
@@ -47,6 +49,7 @@ export default function Admin() {
 
   const [allSessions, setAllSessions] = useState([]);
   const [sessDateFilter, setSessDateFilter] = useState('all');
+  const [sessGroupFilter, setSessGroupFilter] = useState('all');
   const [sessLoading, setSessLoading] = useState(false);
   const [sessionScorers, setSessionScorers] = useState({});
   const [editingSessionId, setEditingSessionId] = useState(null);
@@ -97,7 +100,7 @@ export default function Admin() {
   const [rankings, setRankings] = useState([]);
 
   const activeEvent = events.find((e) => !e.archived) || null;
-  const activeGroup = ageGroups.find((group) => String(group.id) === String(route.groupId)) || null;
+  const activeGroup = ageGroups.find((group) => group.code.toLowerCase() === (route.groupCode || '').toLowerCase()) || null;
 
   useEffect(() => {
     if (location.pathname === '/admin' || location.pathname === '/admin/') {
@@ -193,11 +196,11 @@ export default function Admin() {
 
   const openGroup = useCallback((group) => {
     setShowBlockWizard(false);
-    navigate(`/admin/groups/${group.id}`);
+    navigate(`/admin/groups/${group.code.toLowerCase()}`);
   }, [navigate]);
 
   const openRankings = useCallback((group) => {
-    navigate(`/admin/groups/${group.id}/rankings`);
+    navigate(`/admin/groups/${group.code.toLowerCase()}/rankings`);
   }, [navigate]);
 
   const refreshEvents = async () => {
@@ -555,6 +558,17 @@ export default function Admin() {
     }
   };
 
+  const addAgeGroup = async (data) => {
+    const r = await api.createAgeGroup(data);
+    setAgeGroups((ag) => [...ag, r.ageGroup].sort((a, b) => a.sort_order - b.sort_order));
+  };
+
+  const changeBlockAssignment = async (blockId, data) => {
+    await api.updateSessionBlock(blockId, data);
+    if (activeGroup && activeEvent) await loadGroupData(activeGroup, activeEvent.id);
+    if (route.view === 'sessions') await loadAllSessions();
+  };
+
   const clearImport = () => {
     setImportCsvText('');
     setImportPreview(null);
@@ -567,23 +581,27 @@ export default function Admin() {
     dashboard.find((d) => d.age_group_code === code) || { total_sessions: 0, complete_sessions: 0, total_players: 0, total_scores: 0 };
 
   const uniqueDates = [...new Set(allSessions.map((s) => String(s.session_date).slice(0, 10)))].sort();
-  const filteredSessions = sessDateFilter === 'all' ? allSessions : allSessions.filter((s) => String(s.session_date).slice(0, 10) === sessDateFilter);
+  const uniqueGroups = [...new Set(allSessions.map((s) => s.age_group).filter(Boolean))].sort();
+  const filteredSessions = allSessions
+    .filter((s) => sessDateFilter === 'all' || String(s.session_date).slice(0, 10) === sessDateFilter)
+    .filter((s) => sessGroupFilter === 'all' || s.age_group === sessGroupFilter);
 
   const currentNav = route.view === 'groupDetail' || route.view === 'rankings' ? 'groups' : route.view;
   const backTarget = route.view === 'groupDetail'
-    ? { label: '← Roster', to: '/admin/groups' }
+    ? { label: '← Age Groups', to: '/admin/groups' }
     : route.view === 'rankings' && activeGroup
-      ? { label: '← Group', to: `/admin/groups/${activeGroup.id}` }
+      ? { label: '← Group', to: `/admin/groups/${activeGroup.code.toLowerCase()}` }
       : null;
 
   const pageTitle = {
     overview: 'Dashboard',
     sessions: 'Sessions',
     events: 'Events',
-    groups: 'Roster',
-    groupDetail: activeGroup ? activeGroup.name : 'Roster',
+    groups: 'Age Groups',
+    groupDetail: activeGroup ? activeGroup.name : 'Age Groups',
     rankings: activeGroup ? `${activeGroup.name} Rankings` : 'Rankings',
     coaches: 'Coaches & Scorers',
+    results: 'Results',
   }[route.view];
 
   return (
@@ -650,6 +668,9 @@ export default function Admin() {
               sessDateFilter={sessDateFilter}
               setSessDateFilter={setSessDateFilter}
               uniqueDates={uniqueDates}
+              sessGroupFilter={sessGroupFilter}
+              setSessGroupFilter={setSessGroupFilter}
+              uniqueGroups={uniqueGroups}
               sessLoading={sessLoading}
               filteredSessions={filteredSessions}
               sessionScorers={sessionScorers}
@@ -668,6 +689,7 @@ export default function Admin() {
               setAssignUserId={setAssignUserId}
               assignScorer={assignScorer}
               unassignScorer={unassignScorer}
+              onChangeAssignment={changeBlockAssignment}
             />
           )}
 
@@ -694,7 +716,7 @@ export default function Admin() {
           )}
 
           {!loading && route.view === 'groups' && (
-            <GroupsIndexView ageGroups={ageGroups} groupStats={groupStats} openGroup={openGroup} />
+            <GroupsIndexView ageGroups={ageGroups} groupStats={groupStats} openGroup={openGroup} onAddAgeGroup={addAgeGroup} />
           )}
 
           {!loading && route.view === 'groupDetail' && activeGroup && (
@@ -742,6 +764,7 @@ export default function Admin() {
               setAssignUserId={setAssignUserId}
               assignScorer={assignScorer}
               unassignScorer={unassignScorer}
+              onChangeAssignment={changeBlockAssignment}
               showImport={showImport}
               setShowImport={setShowImport}
               importPreview={importPreview}
@@ -752,6 +775,15 @@ export default function Admin() {
               handleImportFile={handleImportFile}
               commitImport={commitImport}
               clearImport={clearImport}
+            />
+          )}
+
+          {!loading && route.view === 'results' && (
+            <ResultsView
+              ageGroups={ageGroups}
+              activeEvent={activeEvent}
+              openRankings={openRankings}
+              groupStats={groupStats}
             />
           )}
 

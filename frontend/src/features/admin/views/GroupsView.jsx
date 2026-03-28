@@ -1,12 +1,103 @@
+import { useState } from 'react';
 import { A } from '../styles';
-import { BlockWizardPanel, SessionCard } from '../shared';
+import { BlockWizardPanel, STATUS_META, fmt } from '../shared';
 
-export function GroupsIndexView({ ageGroups, groupStats, openGroup }) {
+function SessionMiniCard({ sess, updateStatus, removeSession, startEditSession }) {
+  const sm = STATUS_META[sess.status] || STATUS_META.pending;
+  const isGame = sess.session_type === 'game';
+  return (
+    <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', gap: 5, marginBottom: 4 }}>
+          <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 7px', borderRadius: 20, background: isGame ? 'var(--amber-bg)' : 'var(--blue-bg)', color: isGame ? 'var(--amber-txt)' : 'var(--blue-txt)', border: `1px solid ${isGame ? 'var(--amber)' : 'var(--blue)'}` }}>
+            {isGame ? 'Game' : 'Skills'}
+          </span>
+          {(sess.last_name_start && sess.last_name_end) && (
+            <span style={{ fontSize: 9, padding: '1px 7px', borderRadius: 20, background: 'var(--bg3)', color: 'var(--text2)', border: '1px solid var(--border)' }}>
+              {sess.last_name_start}–{sess.last_name_end}
+            </span>
+          )}
+        </div>
+        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sess.name}</div>
+        <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
+          {sess.start_time ? fmt.time(sess.start_time) : '—'} · <strong>{sess.player_count}</strong> players
+        </div>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
+        <select
+          value={sess.status}
+          onChange={(e) => updateStatus(sess.id, e.target.value)}
+          style={{ fontSize: 11, padding: '2px 6px', borderRadius: 6, background: sm.bg, color: sm.textColor, border: `1px solid ${sm.border}`, cursor: 'pointer', outline: 'none', fontFamily: 'inherit' }}
+        >
+          <option value="pending">Pending</option>
+          <option value="active">Active</option>
+          <option value="complete">Complete</option>
+        </select>
+        <div style={{ display: 'flex', gap: 4 }}>
+          <button onClick={() => startEditSession(sess)} style={{ ...A.iconBtn, fontSize: 13 }} title="Edit">✎</button>
+          <button onClick={() => removeSession(sess.id)} style={{ ...A.iconBtn, fontSize: 13, color: 'var(--red-txt)' }} title="Delete">×</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function GroupsIndexView({ ageGroups, groupStats, openGroup, onAddAgeGroup }) {
+  const [showAdd, setShowAdd] = useState(false);
+  const [newGroup, setNewGroup] = useState({ name: '', code: '', sortOrder: '0' });
+  const [creating, setCreating] = useState(false);
+
+  const handleAdd = async () => {
+    if (!newGroup.name || !newGroup.code) return;
+    setCreating(true);
+    try {
+      await onAddAgeGroup({ name: newGroup.name, code: newGroup.code, sortOrder: parseInt(newGroup.sortOrder) || 0 });
+      setNewGroup({ name: '', code: '', sortOrder: '0' });
+      setShowAdd(false);
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setCreating(false);
+    }
+  };
+
   return (
     <>
       <div style={A.sectionHdr}>
-        <span style={A.sectionLabel}>Select an Age Group</span>
+        <span style={A.sectionLabel}>Age Groups</span>
+        <button onClick={() => setShowAdd((v) => !v)} style={showAdd ? A.ghostBtn : A.primaryBtn}>
+          {showAdd ? 'Cancel' : '+ New Age Group'}
+        </button>
       </div>
+
+      {showAdd && (
+        <div style={{ ...A.card, marginBottom: 16 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>New Age Group</div>
+          <div style={A.formRow}>
+            <div style={{ flex: 2 }}>
+              <label style={A.fieldLabel}>Name</label>
+              <input placeholder="e.g. Mites (8U)" value={newGroup.name}
+                onChange={(e) => setNewGroup((n) => ({ ...n, name: e.target.value }))} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={A.fieldLabel}>Code</label>
+              <input placeholder="e.g. 8U" value={newGroup.code}
+                onChange={(e) => setNewGroup((n) => ({ ...n, code: e.target.value }))} />
+            </div>
+            <div style={{ width: 90 }}>
+              <label style={A.fieldLabel}>Sort order</label>
+              <input type="number" min="0" value={newGroup.sortOrder}
+                onChange={(e) => setNewGroup((n) => ({ ...n, sortOrder: e.target.value }))} />
+            </div>
+          </div>
+          <div style={{ marginTop: 10 }}>
+            <button onClick={handleAdd} disabled={creating || !newGroup.name || !newGroup.code} style={A.saveBtn}>
+              {creating ? 'Creating…' : 'Create Age Group'}
+            </button>
+          </div>
+        </div>
+      )}
+
       <div style={A.ageGroupGrid}>
         {ageGroups.map((g) => {
           const stats = groupStats(g.code);
@@ -76,6 +167,7 @@ export function GroupDetailView({
   setAssignUserId,
   assignScorer,
   unassignScorer,
+  onChangeAssignment,
   showImport,
   setShowImport,
   importPreview,
@@ -153,28 +245,17 @@ export function GroupDetailView({
         <div style={A.emptyCard}>No sessions yet. Use <strong>+ Session Block</strong> to create sessions with automatic player splits.</div>
       )}
 
-      {sessions.map((sess) => (
-        <SessionCard
-          key={sess.id}
-          sess={sess}
-          scorers={sessionScorers[sess.id] || []}
-          users={users}
-          editingSessionId={editingSessionId}
-          editSession={editSession}
-          setEditSession={setEditSession}
-          startEditSession={startEditSession}
-          saveSessionEdit={saveSessionEdit}
-          cancelEdit={cancelEdit}
-          updateStatus={updateStatus}
-          removeSession={removeSession}
-          assigningTo={assigningTo}
-          setAssigningTo={setAssigningTo}
-          assignUserId={assignUserId}
-          setAssignUserId={setAssignUserId}
-          assignScorer={assignScorer}
-          unassignScorer={unassignScorer}
-        />
-      ))}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 8, marginBottom: 4 }}>
+        {sessions.map((sess) => (
+          <SessionMiniCard
+            key={sess.id}
+            sess={sess}
+            updateStatus={updateStatus}
+            removeSession={removeSession}
+            startEditSession={startEditSession}
+          />
+        ))}
+      </div>
 
       <div style={{ ...A.sectionHdr, marginTop: 28 }}>
         <span style={A.sectionLabel}>Players ({players.length})</span>
