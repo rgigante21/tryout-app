@@ -1,43 +1,163 @@
 import { useState } from 'react';
 import { A } from '../styles';
 import { BlockWizardPanel, STATUS_META, fmt } from '../shared';
+import { api } from '../../../utils/api';
 
-function SessionMiniCard({ sess, updateStatus, removeSession, startEditSession }) {
+function SessionMiniCard({ sess, updateStatus, removeSession, onSaveSession }) {
+  const [expanded, setExpanded] = useState(false);
+  const [draft, setDraft] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [sessionPlayers, setSessionPlayers] = useState(null);
+  const [loadingPlayers, setLoadingPlayers] = useState(false);
   const sm = STATUS_META[sess.status] || STATUS_META.pending;
   const isGame = sess.session_type === 'game';
+
+  const toggle = async () => {
+    const next = !expanded;
+    setExpanded(next);
+    if (!next) { setDraft(null); return; }
+    setLoadingPlayers(true);
+    try {
+      const r = await api.sessionPlayers(sess.id);
+      setSessionPlayers(r.players || []);
+    } catch {
+      setSessionPlayers([]);
+    } finally {
+      setLoadingPlayers(false);
+    }
+  };
+
+  const openEdit = () => setDraft({
+    name: sess.name,
+    date: sess.session_date ? sess.session_date.slice(0, 10) : '',
+    time: sess.start_time ? sess.start_time.slice(0, 5) : '',
+  });
+  const cancelEdit = () => setDraft(null);
+  const saveEdit = async () => {
+    if (!draft.name || !draft.date) return;
+    setSaving(true);
+    try {
+      await onSaveSession(sess.id, { name: draft.name, sessionDate: draft.date, startTime: draft.time || null });
+      setDraft(null);
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
-    <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: 'flex', gap: 5, marginBottom: 4 }}>
-          <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 7px', borderRadius: 20, background: isGame ? 'var(--amber-bg)' : 'var(--blue-bg)', color: isGame ? 'var(--amber-txt)' : 'var(--blue-txt)', border: `1px solid ${isGame ? 'var(--amber)' : 'var(--blue)'}` }}>
-            {isGame ? 'Game' : 'Skills'}
-          </span>
-          {(sess.last_name_start && sess.last_name_end) && (
-            <span style={{ fontSize: 9, padding: '1px 7px', borderRadius: 20, background: 'var(--bg3)', color: 'var(--text2)', border: '1px solid var(--border)' }}>
-              {sess.last_name_start}–{sess.last_name_end}
+    <div style={{ background: '#fff', border: `1px solid ${expanded ? 'var(--gold-dark)' : 'var(--border)'}`, borderRadius: 10, overflow: 'hidden', transition: 'border-color 0.15s' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px' }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', gap: 5, marginBottom: 4, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 7px', borderRadius: 20, background: isGame ? 'var(--amber-bg)' : 'var(--blue-bg)', color: isGame ? 'var(--amber-txt)' : 'var(--blue-txt)', border: `1px solid ${isGame ? 'var(--amber)' : 'var(--blue)'}` }}>
+              {isGame ? 'Game' : 'Skills'}
             </span>
-          )}
+            {(sess.last_name_start && sess.last_name_end) && (
+              <span style={{ fontSize: 9, padding: '1px 7px', borderRadius: 20, background: 'var(--bg3)', color: 'var(--text2)', border: '1px solid var(--border)' }}>
+                {sess.last_name_start}–{sess.last_name_end}
+              </span>
+            )}
+          </div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sess.name}</div>
+          <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
+            {sess.start_time ? fmt.time(sess.start_time) : '—'} · <strong>{sess.player_count}</strong> players
+          </div>
         </div>
-        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sess.name}</div>
-        <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
-          {sess.start_time ? fmt.time(sess.start_time) : '—'} · <strong>{sess.player_count}</strong> players
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 5, flexShrink: 0 }}>
+          <select
+            value={sess.status}
+            onChange={(e) => updateStatus(sess.id, e.target.value)}
+            style={{ fontSize: 11, padding: '2px 6px', borderRadius: 6, background: sm.bg, color: sm.textColor, border: `1px solid ${sm.border}`, cursor: 'pointer', outline: 'none', fontFamily: 'inherit' }}
+          >
+            <option value="pending">Pending</option>
+            <option value="active">Active</option>
+            <option value="complete">Complete</option>
+          </select>
+          <button
+            onClick={toggle}
+            style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 6, fontSize: 11, color: 'var(--text3)', padding: '2px 8px', cursor: 'pointer', fontFamily: 'inherit' }}
+          >
+            {expanded ? 'Close ▲' : 'Manage ▼'}
+          </button>
         </div>
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
-        <select
-          value={sess.status}
-          onChange={(e) => updateStatus(sess.id, e.target.value)}
-          style={{ fontSize: 11, padding: '2px 6px', borderRadius: 6, background: sm.bg, color: sm.textColor, border: `1px solid ${sm.border}`, cursor: 'pointer', outline: 'none', fontFamily: 'inherit' }}
-        >
-          <option value="pending">Pending</option>
-          <option value="active">Active</option>
-          <option value="complete">Complete</option>
-        </select>
-        <div style={{ display: 'flex', gap: 4 }}>
-          <button onClick={() => startEditSession(sess)} style={{ ...A.iconBtn, fontSize: 13 }} title="Edit">✎</button>
-          <button onClick={() => removeSession(sess.id)} style={{ ...A.iconBtn, fontSize: 13, color: 'var(--red-txt)' }} title="Delete">×</button>
+
+      {/* Expanded panel */}
+      {expanded && (
+        <div style={{ borderTop: '1px solid var(--bg3)', background: 'var(--bg)', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+          {/* Edit details */}
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <div style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--maroon)' }}>Session Details</div>
+              {!draft && <button onClick={openEdit} style={{ ...A.ghostBtn, fontSize: 11, padding: '4px 10px' }}>Edit</button>}
+              {draft && (
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button onClick={saveEdit} disabled={saving || !draft.name || !draft.date} style={{ ...A.saveBtn, fontSize: 14, padding: '5px 14px' }}>{saving ? 'Saving…' : 'Save'}</button>
+                  <button onClick={cancelEdit} style={{ ...A.ghostBtn, fontSize: 11, padding: '4px 10px' }}>Cancel</button>
+                </div>
+              )}
+            </div>
+            {!draft ? (
+              <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', fontSize: 12, color: 'var(--text2)' }}>
+                <div><span style={{ fontWeight: 700, color: 'var(--text)' }}>Name:</span> {sess.name}</div>
+                <div><span style={{ fontWeight: 700, color: 'var(--text)' }}>Date:</span> {fmt.date(sess.session_date)}</div>
+                <div><span style={{ fontWeight: 700, color: 'var(--text)' }}>Time:</span> {sess.start_time ? fmt.time(sess.start_time) : '—'}</div>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                <div style={{ flex: '2 1 160px', minWidth: 130 }}>
+                  <label style={{ ...A.fieldLabel, fontSize: 11 }}>Name</label>
+                  <input value={draft.name} onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))} />
+                </div>
+                <div style={{ flex: '1 1 120px', minWidth: 110 }}>
+                  <label style={{ ...A.fieldLabel, fontSize: 11 }}>Date</label>
+                  <input type="date" value={draft.date} onChange={(e) => setDraft((d) => ({ ...d, date: e.target.value }))} />
+                </div>
+                <div style={{ flex: '0 0 110px', minWidth: 100 }}>
+                  <label style={{ ...A.fieldLabel, fontSize: 11 }}>Time</label>
+                  <input type="time" value={draft.time} onChange={(e) => setDraft((d) => ({ ...d, time: e.target.value }))} />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Player list */}
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--maroon)', marginBottom: 6 }}>
+              Players{sessionPlayers ? ` (${sessionPlayers.length})` : ''}
+            </div>
+            {loadingPlayers && <div style={{ fontSize: 12, color: 'var(--text3)' }}>Loading…</div>}
+            {!loadingPlayers && sessionPlayers?.length === 0 && (
+              <div style={{ fontSize: 12, color: 'var(--text3)', fontStyle: 'italic' }}>No players assigned.</div>
+            )}
+            {!loadingPlayers && sessionPlayers && sessionPlayers.length > 0 && (
+              <div style={{ maxHeight: 180, overflowY: 'auto', background: '#fff', border: '1px solid var(--border)', borderRadius: 8 }}>
+                {sessionPlayers.map((p, i) => (
+                  <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderBottom: i < sessionPlayers.length - 1 ? '1px solid var(--border)' : 'none', fontSize: 12 }}>
+                    <span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 15, fontWeight: 700, color: 'var(--maroon)', width: 30, flexShrink: 0 }}>
+                      #{p.jersey_number}
+                    </span>
+                    <span style={{ flex: 1 }}>{p.first_name} {p.last_name}</span>
+                    {p.scored && <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 8, background: 'var(--green-bg)', color: 'var(--green-txt)' }}>✓</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Delete */}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: 4, borderTop: '1px solid var(--border)' }}>
+            <button onClick={() => removeSession(sess.id)} style={{ ...A.iconBtn, fontSize: 12, color: 'var(--red-txt)' }}>
+              Delete session
+            </button>
+          </div>
+
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -149,12 +269,7 @@ export function GroupDetailView({
   addPlayer,
   addingPlayer,
   removePlayer,
-  editingSessionId,
-  editSession,
-  setEditSession,
-  startEditSession,
-  saveSessionEdit,
-  cancelEdit,
+  onSaveSession,
   updateStatus,
   removeSession,
   assigningTo,
@@ -241,14 +356,14 @@ export function GroupDetailView({
         <div style={A.emptyCard}>No sessions yet. Use <strong>+ Session Block</strong> to create sessions with automatic player splits.</div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 8, marginBottom: 4 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 4 }}>
         {sessions.map((sess) => (
           <SessionMiniCard
             key={sess.id}
             sess={sess}
             updateStatus={updateStatus}
             removeSession={removeSession}
-            startEditSession={startEditSession}
+            onSaveSession={onSaveSession}
           />
         ))}
       </div>
@@ -331,10 +446,11 @@ export function GroupDetailView({
               />
             </div>
           </div>
-          <div style={{ marginTop: 10 }}>
+          <div style={{ marginTop: 10, display: 'flex', gap: 8 }}>
             <button onClick={addPlayer} disabled={addingPlayer || !newPlayer.firstName || !newPlayer.lastName || !newPlayer.jersey} style={A.saveBtn}>
               {addingPlayer ? 'Adding…' : 'Add Player'}
             </button>
+            <button onClick={() => setShowAddPlayer(false)} style={A.ghostBtn}>Cancel</button>
           </div>
         </div>
       )}

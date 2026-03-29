@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { A } from '../styles';
 import { BlockWizardPanel, STATUS_META, fmt } from '../shared';
+import { api } from '../../../utils/api';
 
 const TYPE_STYLE = {
   game:   { bg: 'var(--amber-bg)', color: 'var(--amber-txt)', border: 'var(--amber)', label: '🥅 Game' },
@@ -30,11 +31,28 @@ function SessionTile({
   const [draft, setDraft] = useState(null);
   const [saving, setSaving] = useState(false);
   const [changingAssignment, setChangingAssignment] = useState(false);
+  const [sessionPlayers, setSessionPlayers] = useState(null);
+  const [loadingPlayers, setLoadingPlayers] = useState(false);
 
   const sm = STATUS_META[sess.status] || STATUS_META.pending;
   const typeStyle = TYPE_STYLE[sess.session_type] || TYPE_STYLE.skills;
   const isAssigning = assigningTo === sess.id;
   const assignable = users.filter((u) => !scorers.find((sc) => sc.id === u.id));
+
+  const toggle = async () => {
+    const next = !expanded;
+    setExpanded(next);
+    if (!next) { setDraft(null); return; }
+    setLoadingPlayers(true);
+    try {
+      const r = await api.sessionPlayers(sess.id);
+      setSessionPlayers(r.players || []);
+    } catch {
+      setSessionPlayers([]);
+    } finally {
+      setLoadingPlayers(false);
+    }
+  };
 
   const openEdit = () => setDraft({
     name: sess.name,
@@ -57,18 +75,33 @@ function SessionTile({
 
   const doAssignment = async (payload) => {
     setChangingAssignment(true);
-    try { await onChangeAssignment(sess.block_id, payload); }
-    catch (err) { alert(err.message); }
-    finally { setChangingAssignment(false); }
+    try {
+      await onChangeAssignment(sess.block_id, payload);
+      const r = await api.sessionPlayers(sess.id);
+      setSessionPlayers(r.players || []);
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setChangingAssignment(false);
+    }
   };
 
   return (
-    <div style={{ background: '#fff', border: `1px solid ${expanded ? 'var(--gold-dark)' : 'var(--border)'}`, borderRadius: 12, padding: '14px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', transition: 'border-color 0.15s' }} className="ag-card">
+    <div style={{
+      background: '#fff',
+      border: `1px solid ${expanded ? 'var(--gold-dark)' : 'var(--border)'}`,
+      borderRadius: 12,
+      overflow: 'hidden',
+      boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
+      transition: 'border-color 0.15s',
+    }}>
 
-      {/* Tile header — always visible */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+      {/* ── Header row ── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 18px' }}>
+
+        {/* Left: badges + name + meta */}
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 5 }}>
             <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: typeStyle.bg, color: typeStyle.color, border: `1px solid ${typeStyle.border}` }}>
               {typeStyle.label}
             </span>
@@ -77,153 +110,184 @@ function SessionTile({
                 {sess.age_group}
               </span>
             )}
+            {(sess.last_name_start && sess.last_name_end) && (
+              <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 20, background: 'var(--bg3)', color: 'var(--text2)', border: '1px solid var(--border)' }}>
+                {sess.last_name_start}–{sess.last_name_end}
+              </span>
+            )}
           </div>
-          <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 18, fontWeight: 700, color: 'var(--text)', lineHeight: 1.2, marginBottom: 4 }}>{sess.name}</div>
-          <div style={{ fontSize: 12, color: 'var(--text2)' }}>
+          <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 19, fontWeight: 700, color: 'var(--text)', lineHeight: 1.2 }}>{sess.name}</div>
+          <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 3 }}>
             {fmt.date(sess.session_date)}{sess.start_time ? ` · ${fmt.time(sess.start_time)}` : ''}
+            {!expanded && scorers.length > 0 && (
+              <span style={{ marginLeft: 10, color: 'var(--text3)' }}>· {scorers.map((u) => u.first_name).join(', ')}</span>
+            )}
           </div>
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flexShrink: 0 }}>
-          <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: sm.bg, color: sm.textColor, border: `1px solid ${sm.border}` }}>
-            {sm.label}
-          </span>
-          <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 22, fontWeight: 700, color: 'var(--maroon)' }}>
-            {sess.player_count} <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text3)' }}>players</span>
+
+        {/* Right: count + status + manage */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 26, fontWeight: 700, color: 'var(--maroon)', lineHeight: 1 }}>{sess.player_count}</div>
+            <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>players</div>
           </div>
+          <select
+            value={sess.status}
+            onChange={(e) => updateStatus(sess.id, e.target.value)}
+            style={{ ...A.statusSelect, background: sm.bg, color: sm.textColor, border: `1px solid ${sm.border}` }}
+          >
+            <option value="pending">Pending</option>
+            <option value="active">Active</option>
+            <option value="complete">Complete</option>
+          </select>
+          <button
+            onClick={toggle}
+            style={{
+              background: expanded ? 'var(--maroon)' : '#fff',
+              border: `1px solid ${expanded ? 'var(--maroon)' : 'var(--border)'}`,
+              borderRadius: 8, fontSize: 12, color: expanded ? '#fff' : 'var(--text2)',
+              padding: '7px 14px', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600, whiteSpace: 'nowrap',
+            }}
+          >
+            {expanded ? 'Close ▲' : 'Manage ▼'}
+          </button>
         </div>
       </div>
 
-      {/* Scorers summary (collapsed only) */}
-      {!expanded && scorers.length > 0 && (
-        <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text3)' }}>
-          Scorers: {scorers.map((u) => `${u.first_name} ${u.last_name}`).join(', ')}
-        </div>
-      )}
-
-      {/* Expand toggle */}
-      <button
-        onClick={() => { setExpanded((v) => !v); if (expanded) setDraft(null); }}
-        style={{ marginTop: 10, background: 'none', border: '1px solid var(--border)', borderRadius: 6, fontSize: 11, color: 'var(--text3)', padding: '3px 10px', cursor: 'pointer', fontFamily: 'inherit' }}
-      >
-        {expanded ? 'Less ▲' : 'Manage ▼'}
-      </button>
-
-      {/* Expanded controls */}
+      {/* ── Expanded panel ── */}
       {expanded && (
-        <div style={{ marginTop: 12, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+        <div style={{ borderTop: '2px solid var(--bg3)', background: 'var(--bg)' }}>
+          <div style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-          {/* Status + quick actions row */}
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
-            <select
-              value={sess.status}
-              onChange={(e) => updateStatus(sess.id, e.target.value)}
-              style={{ ...A.statusSelect, background: sm.bg, color: sm.textColor, border: `1px solid ${sm.border}` }}
-            >
-              <option value="pending">Pending</option>
-              <option value="active">Active</option>
-              <option value="complete">Complete</option>
-            </select>
-            {!draft && (
-              <button onClick={openEdit} style={A.ghostBtn}>Edit Details</button>
-            )}
-            <button
-              onClick={() => removeSession(sess.id)}
-              style={{ ...A.ghostBtn, color: 'var(--red-txt)', borderColor: 'var(--red-txt)' }}
-            >
-              Delete
-            </button>
-          </div>
-
-          {/* Edit details form */}
-          {draft && (
-            <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8, padding: '12px 14px', marginBottom: 12 }}>
-              <div style={A.formRow}>
-                <div style={{ flex: 2 }}>
-                  <label style={A.fieldLabel}>Name</label>
-                  <input value={draft.name} onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))} />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <label style={A.fieldLabel}>Date</label>
-                  <input type="date" value={draft.date} onChange={(e) => setDraft((d) => ({ ...d, date: e.target.value }))} />
-                </div>
-                <div style={{ width: 110 }}>
-                  <label style={A.fieldLabel}>Time</label>
-                  <input type="time" value={draft.time} onChange={(e) => setDraft((d) => ({ ...d, time: e.target.value }))} />
-                </div>
+            {/* Session Details */}
+            <section>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--maroon)' }}>Session Details</div>
+                {!draft && <button onClick={openEdit} style={A.ghostBtn}>Edit</button>}
+                {draft && (
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button onClick={saveEdit} disabled={saving || !draft.name || !draft.date} style={A.saveBtn}>{saving ? 'Saving…' : 'Save'}</button>
+                    <button onClick={cancelEdit} style={A.ghostBtn}>Cancel</button>
+                  </div>
+                )}
               </div>
-              <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-                <button onClick={saveEdit} disabled={saving || !draft.name || !draft.date} style={A.saveBtn}>
-                  {saving ? 'Saving…' : 'Save'}
-                </button>
-                <button onClick={cancelEdit} style={A.ghostBtn}>Cancel</button>
-              </div>
-            </div>
-          )}
-
-          {/* Player assignment — always shown for block sessions */}
-          {sess.block_id && onChangeAssignment && (
-            <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text2)', marginBottom: 6 }}>
-                Player Assignment
-                {changingAssignment && <span style={{ marginLeft: 8, fontSize: 11, color: 'var(--text3)', fontWeight: 400 }}>Updating…</span>}
-              </div>
-              {sess.session_type === 'skills' ? (
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {SPLIT_METHODS.map(({ method, label }) => (
-                    <button
-                      key={method}
-                      disabled={changingAssignment}
-                      style={{ ...A.splitBtn, fontSize: 11, padding: '4px 12px', border: '1px solid var(--border)', background: 'var(--bg3)', color: 'var(--text)', cursor: 'pointer' }}
-                      onClick={() => doAssignment({ splitMethod: method })}
-                    >
-                      {label}
-                    </button>
-                  ))}
+              {!draft ? (
+                <div style={{ display: 'flex', gap: 28, flexWrap: 'wrap', fontSize: 13, color: 'var(--text2)' }}>
+                  <div><span style={{ fontWeight: 700, color: 'var(--text)' }}>Name</span><br />{sess.name}</div>
+                  <div><span style={{ fontWeight: 700, color: 'var(--text)' }}>Date</span><br />{fmt.date(sess.session_date)}</div>
+                  <div><span style={{ fontWeight: 700, color: 'var(--text)' }}>Time</span><br />{sess.start_time ? fmt.time(sess.start_time) : '—'}</div>
                 </div>
               ) : (
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {GAME_ASSIGNMENTS.map(({ method, label }) => (
-                    <button
-                      key={method}
-                      disabled={changingAssignment}
-                      style={{ ...A.splitBtn, fontSize: 11, padding: '4px 12px', border: '1px solid var(--border)', background: 'var(--bg3)', color: 'var(--text)', cursor: 'pointer' }}
-                      onClick={() => doAssignment({ playerAssignment: method })}
-                    >
-                      {label}
-                    </button>
-                  ))}
+                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                  <div style={{ flex: '2 1 200px', minWidth: 150 }}>
+                    <label style={A.fieldLabel}>Name</label>
+                    <input value={draft.name} onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))} />
+                  </div>
+                  <div style={{ flex: '1 1 140px', minWidth: 130 }}>
+                    <label style={A.fieldLabel}>Date</label>
+                    <input type="date" value={draft.date} onChange={(e) => setDraft((d) => ({ ...d, date: e.target.value }))} />
+                  </div>
+                  <div style={{ flex: '0 0 130px', minWidth: 110 }}>
+                    <label style={A.fieldLabel}>Time</label>
+                    <input type="time" value={draft.time} onChange={(e) => setDraft((d) => ({ ...d, time: e.target.value }))} />
+                  </div>
                 </div>
               )}
-            </div>
-          )}
+            </section>
 
-          {/* Scorer assignment */}
-          <div>
-            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text2)', marginBottom: 6 }}>Scorers</div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
-              {scorers.map((u) => (
-                <span key={u.id} style={A.scorerChip}>
-                  {u.first_name} {u.last_name}
-                  <button onClick={() => unassignScorer(sess.id, u.id)} style={A.chipX}>×</button>
-                </span>
-              ))}
-              {isAssigning ? (
-                <div style={{ display: 'flex', gap: 6, alignItems: 'center', width: '100%', marginTop: 4 }}>
-                  <select value={assignUserId} onChange={(e) => setAssignUserId(e.target.value)} style={{ flex: 1, ...A.selectInput }}>
-                    <option value="">Select scorer…</option>
-                    {assignable.map((u) => (
-                      <option key={u.id} value={u.id}>{u.first_name} {u.last_name} ({u.role})</option>
+            {/* Players + Assignment + Scorers in columns */}
+            <div style={{ display: 'grid', gridTemplateColumns: `1fr${sess.block_id && onChangeAssignment ? ' 200px' : ''} 220px`, gap: 20, alignItems: 'start' }}>
+
+              {/* Players */}
+              <section>
+                <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--maroon)', marginBottom: 10 }}>
+                  Players{sessionPlayers ? ` (${sessionPlayers.length})` : ''}
+                </div>
+                {loadingPlayers && <div style={{ fontSize: 12, color: 'var(--text3)', padding: '8px 0' }}>Loading…</div>}
+                {!loadingPlayers && sessionPlayers?.length === 0 && (
+                  <div style={{ fontSize: 12, color: 'var(--text3)', fontStyle: 'italic' }}>No players assigned to this session.</div>
+                )}
+                {!loadingPlayers && sessionPlayers && sessionPlayers.length > 0 && (
+                  <div style={{ maxHeight: 220, overflowY: 'auto', background: '#fff', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+                    {sessionPlayers.map((p, i) => (
+                      <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderBottom: i < sessionPlayers.length - 1 ? '1px solid var(--border)' : 'none', fontSize: 13 }}>
+                        <span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 17, fontWeight: 700, color: 'var(--maroon)', width: 36, flexShrink: 0 }}>
+                          #{p.jersey_number}
+                        </span>
+                        <span style={{ flex: 1, color: 'var(--text)', fontWeight: 500 }}>{p.first_name} {p.last_name}</span>
+                        {p.scored && (
+                          <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 10, background: 'var(--green-bg)', color: 'var(--green-txt)', border: '1px solid var(--green)', flexShrink: 0 }}>✓</span>
+                        )}
+                      </div>
                     ))}
-                  </select>
-                  <button onClick={() => assignScorer(sess.id)} style={A.primaryBtn}>Assign</button>
-                  <button onClick={() => { setAssigningTo(null); setAssignUserId(''); }} style={A.ghostBtn}>Cancel</button>
-                </div>
-              ) : (
-                <button onClick={() => { setAssigningTo(sess.id); setAssignUserId(''); }} style={A.addScorerBtn}>+ Add scorer</button>
-              )}
-            </div>
-          </div>
+                  </div>
+                )}
+              </section>
 
+              {/* Player Re-assignment (block sessions only) */}
+              {sess.block_id && onChangeAssignment && (
+                <section>
+                  <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--maroon)', marginBottom: 4 }}>
+                    Re-assign
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 8, lineHeight: 1.4 }}>
+                    Reassign all players in this block using a different split.
+                    {changingAssignment && <span style={{ marginLeft: 4, color: 'var(--amber-txt)' }}>Updating…</span>}
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {(sess.session_type === 'skills' ? SPLIT_METHODS : GAME_ASSIGNMENTS).map(({ method, label }) => (
+                      <button
+                        key={method}
+                        disabled={changingAssignment}
+                        onClick={() => doAssignment(sess.session_type === 'skills' ? { splitMethod: method } : { playerAssignment: method })}
+                        style={{ ...A.ghostBtn, fontSize: 12, padding: '6px 10px', textAlign: 'left', opacity: changingAssignment ? 0.5 : 1 }}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {/* Scorers */}
+              <section>
+                <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--maroon)', marginBottom: 10 }}>Scorers</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'flex-start' }}>
+                  {scorers.map((u) => (
+                    <span key={u.id} style={A.scorerChip}>
+                      {u.first_name} {u.last_name}
+                      <button onClick={() => unassignScorer(sess.id, u.id)} style={A.chipX}>×</button>
+                    </span>
+                  ))}
+                  {isAssigning ? (
+                    <div style={{ width: '100%', marginTop: 4, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <select value={assignUserId} onChange={(e) => setAssignUserId(e.target.value)} style={{ ...A.selectInput }}>
+                        <option value="">Select scorer…</option>
+                        {assignable.map((u) => (
+                          <option key={u.id} value={u.id}>{u.first_name} {u.last_name} ({u.role})</option>
+                        ))}
+                      </select>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button onClick={() => assignScorer(sess.id)} style={A.primaryBtn}>Assign</button>
+                        <button onClick={() => { setAssigningTo(null); setAssignUserId(''); }} style={A.ghostBtn}>Cancel</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button onClick={() => { setAssigningTo(sess.id); setAssignUserId(''); }} style={A.addScorerBtn}>+ Add scorer</button>
+                  )}
+                </div>
+              </section>
+
+            </div>
+
+            {/* Delete */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: 4, borderTop: '1px solid var(--border)' }}>
+              <button onClick={() => removeSession(sess.id)} style={{ ...A.ghostBtn, color: 'var(--red-txt)', borderColor: 'var(--red-txt)', fontSize: 12 }}>
+                Delete Session
+              </button>
+            </div>
+
+          </div>
         </div>
       )}
     </div>
@@ -308,7 +372,8 @@ export default function SessionsView({
       {!sessLoading && filteredSessions.length === 0 && (
         <div style={A.emptyCard}>No sessions yet. Use <strong>+ Session Block</strong> to create sessions.</div>
       )}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {!sessLoading && filteredSessions.map((sess) => (
           <SessionTile
             key={sess.id} sess={sess}

@@ -785,12 +785,7 @@ export default function Admin() {
               addPlayer={addPlayer}
               addingPlayer={addingPlayer}
               removePlayer={removePlayer}
-              editingSessionId={editingSessionId}
-              editSession={editSession}
-              setEditSession={setEditSession}
-              startEditSession={startEditSession}
-              saveSessionEdit={saveSessionEdit}
-              cancelEdit={() => setEditingSessionId(null)}
+              onSaveSession={patchSession}
               updateStatus={updateStatus}
               removeSession={removeSession}
               assigningTo={assigningTo}
