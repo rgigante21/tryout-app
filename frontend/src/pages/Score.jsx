@@ -32,6 +32,7 @@ export default function Score() {
   const [players, setPlayers]     = useState([]);
   const [player, setPlayer]       = useState(null);
   const [draft, setDraft]         = useState({});
+  const [drafts, setDrafts]       = useState({}); // persists partial work per player
   const [saved, setSaved]         = useState({});
   const [loading, setLoading]     = useState(true);
   const [saving, setSaving]       = useState(false);
@@ -61,6 +62,7 @@ export default function Score() {
     setPendingErr(null);
     setPlayer(null);
     setDraft({});
+    setDrafts({});
     try {
       const data = await api.sessionPlayers(s.id);
       const list = data.players || [];
@@ -88,12 +90,19 @@ export default function Score() {
 
   const openPlayer = (p) => {
     setPlayer(p);
-    const prev = saved[p.id] || {};
+    const prev      = saved[p.id]  || {};
+    const prevDraft = drafts[p.id] || {};
     setDraft({
-      skating:     prev.skating     ?? null,
-      puckSkills:  prev.puckSkills  ?? null,
-      hockeySense: prev.hockeySense ?? null,
+      skating:     prev.skating     ?? prevDraft.skating     ?? null,
+      puckSkills:  prev.puckSkills  ?? prevDraft.puckSkills  ?? null,
+      hockeySense: prev.hockeySense ?? prevDraft.hockeySense ?? null,
     });
+  };
+
+  // Save current draft and go back to roster
+  const goBack = () => {
+    setDrafts(prev => ({ ...prev, [player.id]: { ...draft } }));
+    setPlayer(null);
   };
 
   const setPill = (key, val) => setDraft(d => ({ ...d, [key]: val }));
@@ -112,6 +121,7 @@ export default function Score() {
         hockeySense: draft.hockeySense,
       });
       setSaved(s => ({ ...s, [player.id]: { ...draft, complete: true } }));
+      setDrafts(prev => { const n = { ...prev }; delete n[player.id]; return n; });
       setPlayer(null);
     } catch (err) {
       alert('Failed to save: ' + err.message);
@@ -120,16 +130,27 @@ export default function Score() {
     }
   };
 
-  const btnState = (p) => saved[p.id]?.complete ? 'complete' : 'default';
+  const btnState = (p) => {
+    if (saved[p.id]?.complete) return 'complete';
+    const d = drafts[p.id];
+    if (d && CRITERIA.some(c => d[c.key] != null)) return 'partial';
+    return 'default';
+  };
 
   const btnStyle = (state) => ({
     ...styles.numBtn,
     ...(state === 'complete' ? styles.numComplete : {}),
+    ...(state === 'partial'  ? styles.numPartial  : {}),
   });
 
-  const scored = Object.values(saved).filter(s => s.complete).length;
-  const total  = players.length;
-  const pct    = total ? Math.round(scored / total * 100) : 0;
+  const scored  = Object.values(saved).filter(s => s.complete).length;
+  const partial = players.filter(p => {
+    if (saved[p.id]?.complete) return false;
+    const d = drafts[p.id];
+    return d && CRITERIA.some(c => d[c.key] != null);
+  }).length;
+  const total = players.length;
+  const pct   = total ? Math.round(scored / total * 100) : 0;
 
   // ── Session list view ─────────────────
   if (!session) return (
@@ -157,15 +178,21 @@ export default function Score() {
 
       {sessions.map(s => {
         const isPending  = s.status === 'pending';
+        const isActive   = s.status === 'active';
         const isComplete = s.status === 'complete';
-        const badgeStyle = isComplete ? styles.badgeGreen : isPending ? styles.badgePending : styles.badgeBlue;
+        const badgeStyle = isComplete ? styles.badgeGreen : isPending ? styles.badgePending : styles.badgeActive;
+        const cardExtra  = isActive
+          ? { borderColor: 'var(--gold)', borderLeftWidth: 3, background: 'var(--bg2)' }
+          : isPending
+            ? { opacity: 0.7 }
+            : {};
         return (
           <button key={s.id} onClick={() => openSession(s)}
-            style={{ ...styles.sessionCard, opacity: isPending ? 0.75 : 1 }}>
+            style={{ ...styles.sessionCard, ...cardExtra }}>
             <div style={styles.sessionTop}>
               <span style={styles.sessionAge}>{s.age_group}</span>
               <span style={{ ...styles.badge, ...badgeStyle }}>
-                {isPending ? '🔒 Pending' : s.status}
+                {isPending ? '🔒 Pending' : isActive ? '● Active' : 'Complete'}
               </span>
             </div>
             <div style={styles.sessionName}>{s.name}</div>
@@ -218,9 +245,12 @@ export default function Score() {
   );
 
   // ── Player score view ─────────────────
-  if (player) return (
+  if (player) {
+    const scoredCount = CRITERIA.filter(c => draft[c.key] != null).length;
+    const remaining   = CRITERIA.length - scoredCount;
+    return (
     <div style={styles.page}>
-      <button onClick={() => setPlayer(null)} style={styles.backBtn}>
+      <button onClick={goBack} style={styles.backBtn}>
         ← Back to roster
       </button>
 
@@ -233,27 +263,41 @@ export default function Score() {
       </div>
 
       <div style={styles.criteriaCard}>
-        {CRITERIA.map(c => (
-          <div key={c.key} style={styles.criteriaRow}>
-            <div style={styles.criteriaName}>{c.label}</div>
-            <div style={styles.criteriaDesc}>{c.desc}</div>
-            <div style={styles.pills}>
-              {[1, 2, 3, 4, 5].map(v => (
-                <button
-                  key={v}
-                  onClick={() => setPill(c.key, v)}
-                  style={{
-                    ...styles.pill,
-                    ...(draft[c.key] === v ? styles.pillSelected : {})
-                  }}
-                >
-                  {v}
-                </button>
-              ))}
+        {CRITERIA.map(c => {
+          const isScored = draft[c.key] != null;
+          return (
+            <div key={c.key} style={{ ...styles.criteriaRow, position: 'relative' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                <div style={styles.criteriaName}>{c.label}</div>
+                {!isScored && (
+                  <span style={styles.missingDot}>needed</span>
+                )}
+              </div>
+              <div style={styles.criteriaDesc}>{c.desc}</div>
+              <div style={styles.pills}>
+                {[1, 2, 3, 4, 5].map(v => (
+                  <button
+                    key={v}
+                    onClick={() => setPill(c.key, v)}
+                    style={{
+                      ...styles.pill,
+                      ...(draft[c.key] === v ? styles.pillSelected : {})
+                    }}
+                  >
+                    {v}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
+
+      {!allScored && scoredCount > 0 && (
+        <div style={styles.incompleteNote}>
+          {remaining} criterion{remaining !== 1 ? 'a' : ''} still needed to save
+        </div>
+      )}
 
       <button
         onClick={saveScore}
@@ -264,6 +308,7 @@ export default function Score() {
       </button>
     </div>
   );
+  }
 
   // ── Number grid view ──────────────────
   return (
@@ -279,13 +324,17 @@ export default function Score() {
       </div>
 
       <div style={styles.legend}>
-        <div style={styles.legendItem}><div style={{ ...styles.dot, background: 'var(--bg3)', border: '1px solid var(--border)' }}></div>Not scored</div>
-        <div style={styles.legendItem}><div style={{ ...styles.dot, background: 'var(--green-bg)', border: '1px solid var(--green-bdr)' }}></div>Complete</div>
+        <div style={styles.legendItem}><div style={{ ...styles.dot, background: 'var(--bg3)',     border: '1px solid var(--border)' }} />Not scored</div>
+        <div style={styles.legendItem}><div style={{ ...styles.dot, background: 'var(--amber-bg)', border: '1px solid var(--amber)' }} />Incomplete</div>
+        <div style={styles.legendItem}><div style={{ ...styles.dot, background: 'var(--green-bg)', border: '1px solid var(--green)' }} />Complete</div>
       </div>
 
       <div style={styles.progressWrap}>
         <div style={styles.progressLabels}>
-          <span>{scored} of {total} scored</span>
+          <span>
+            {scored} of {total} complete
+            {partial > 0 && <span style={{ color: 'var(--amber-txt)', marginLeft: 8 }}>· {partial} incomplete</span>}
+          </span>
           <span>{pct}%</span>
         </div>
         <div style={styles.progressTrack}>
@@ -355,7 +404,8 @@ const styles = {
     color: 'var(--text)', fontSize: '18px', fontWeight: 600,
     display: 'flex', alignItems: 'center', justifyContent: 'center',
   },
-  numComplete: { background: 'var(--maroon-bg)', border: '1px solid var(--maroon)', color: 'var(--maroon-txt)' },
+  numComplete: { background: 'var(--green-bg)',  border: '1px solid var(--green)',  color: 'var(--green-txt)'  },
+  numPartial:  { background: 'var(--amber-bg)',  border: '1px solid var(--amber)',  color: 'var(--amber-txt)'  },
 
   playerBadge: { background: 'var(--gold-bg)', border: '1px solid var(--gold-dark)', borderRadius: 'var(--radius)', padding: '14px 16px', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '14px' },
   playerNum:   { fontSize: '40px', fontWeight: 700, color: 'var(--gold)', lineHeight: 1, minWidth: 60 },
@@ -365,7 +415,7 @@ const styles = {
   criteriaCard: { background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '16px', marginBottom: '14px' },
   criteriaRow:  { marginBottom: '18px' },
   criteriaName: { fontSize: '13px', fontWeight: 500, color: 'var(--text)', marginBottom: '2px' },
-  criteriaDesc: { fontSize: '11px', color: 'var(--text3)', marginBottom: '8px' },
+  criteriaDesc: { fontSize: '13px', color: 'var(--text2)', marginBottom: '8px' },
 
   pills:       { display: 'flex', gap: '7px' },
   pill:        { flex: 1, padding: '11px 0', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--bg3)', color: 'var(--text2)', fontSize: '16px', fontWeight: 600 },
@@ -375,6 +425,7 @@ const styles = {
   saveBtnDisabled: { border: '1px solid var(--border)', background: 'var(--bg3)', color: 'var(--text3)', cursor: 'default' },
 
   badgePending: { background: 'var(--bg3)', color: 'var(--text3)', border: '1px solid var(--border)' },
+  badgeActive:  { background: 'var(--gold-bg)', color: 'var(--gold-txt)', border: '1px solid var(--gold-dark)' },
 
   // Pending lock screen
   lockCard:   { background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '36px 28px', textAlign: 'center', marginTop: 16 },
@@ -386,4 +437,7 @@ const styles = {
   lockLabel:  { fontSize: 12, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em' },
   lockValue:  { fontSize: 13, fontWeight: 600, color: 'var(--text)' },
   lockNote:   { fontSize: 12, color: 'var(--text3)', marginTop: 8, lineHeight: 1.6 },
+
+  missingDot:     { fontSize: 10, fontWeight: 700, color: 'var(--amber-txt)', background: 'var(--amber-bg)', border: '1px solid var(--amber)', borderRadius: 20, padding: '1px 7px', letterSpacing: '0.03em' },
+  incompleteNote: { fontSize: 12, color: 'var(--amber-txt)', background: 'var(--amber-bg)', border: '1px solid var(--amber)', borderRadius: 'var(--radius-sm)', padding: '8px 12px', marginBottom: 10, textAlign: 'center' },
 };

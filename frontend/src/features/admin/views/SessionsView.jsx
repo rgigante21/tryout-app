@@ -7,25 +7,64 @@ const TYPE_STYLE = {
   skills: { bg: 'var(--blue-bg)',  color: 'var(--blue-txt)',  border: 'var(--blue)',  label: '🏒 Skills' },
 };
 
+const SPLIT_METHODS = [
+  { method: 'last_name',    label: 'By Last Name' },
+  { method: 'jersey_range', label: 'By Jersey #' },
+  { method: 'none',         label: 'All Together' },
+  { method: 'manual',       label: 'Manual' },
+];
+
+const GAME_ASSIGNMENTS = [
+  { method: 'random', label: 'Random' },
+  { method: 'manual', label: 'Manual' },
+];
+
 function SessionTile({
   sess, scorers, users,
-  editingSessionId, editSession, setEditSession,
-  startEditSession, saveSessionEdit, cancelEdit,
+  onSaveSession,
   updateStatus, removeSession,
   assigningTo, setAssigningTo, assignUserId, setAssignUserId,
   assignScorer, unassignScorer, onChangeAssignment,
 }) {
   const [expanded, setExpanded] = useState(false);
-  const [showAssignmentEdit, setShowAssignmentEdit] = useState(false);
+  const [draft, setDraft] = useState(null);
+  const [saving, setSaving] = useState(false);
   const [changingAssignment, setChangingAssignment] = useState(false);
+
   const sm = STATUS_META[sess.status] || STATUS_META.pending;
   const typeStyle = TYPE_STYLE[sess.session_type] || TYPE_STYLE.skills;
-  const isEditing = editingSessionId === sess.id;
   const isAssigning = assigningTo === sess.id;
   const assignable = users.filter((u) => !scorers.find((sc) => sc.id === u.id));
 
+  const openEdit = () => setDraft({
+    name: sess.name,
+    date: sess.session_date ? sess.session_date.slice(0, 10) : '',
+    time: sess.start_time ? sess.start_time.slice(0, 5) : '',
+  });
+  const cancelEdit = () => setDraft(null);
+  const saveEdit = async () => {
+    if (!draft.name || !draft.date) return;
+    setSaving(true);
+    try {
+      await onSaveSession(sess.id, { name: draft.name, sessionDate: draft.date, startTime: draft.time || null });
+      setDraft(null);
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const doAssignment = async (payload) => {
+    setChangingAssignment(true);
+    try { await onChangeAssignment(sess.block_id, payload); }
+    catch (err) { alert(err.message); }
+    finally { setChangingAssignment(false); }
+  };
+
   return (
     <div style={{ background: '#fff', border: `1px solid ${expanded ? 'var(--gold-dark)' : 'var(--border)'}`, borderRadius: 12, padding: '14px 16px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', transition: 'border-color 0.15s' }} className="ag-card">
+
       {/* Tile header — always visible */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -54,8 +93,8 @@ function SessionTile({
         </div>
       </div>
 
-      {/* Scorers summary */}
-      {scorers.length > 0 && (
+      {/* Scorers summary (collapsed only) */}
+      {!expanded && scorers.length > 0 && (
         <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text3)' }}>
           Scorers: {scorers.map((u) => `${u.first_name} ${u.last_name}`).join(', ')}
         </div>
@@ -63,7 +102,7 @@ function SessionTile({
 
       {/* Expand toggle */}
       <button
-        onClick={() => setExpanded((v) => !v)}
+        onClick={() => { setExpanded((v) => !v); if (expanded) setDraft(null); }}
         style={{ marginTop: 10, background: 'none', border: '1px solid var(--border)', borderRadius: 6, fontSize: 11, color: 'var(--text3)', padding: '3px 10px', cursor: 'pointer', fontFamily: 'inherit' }}
       >
         {expanded ? 'Less ▲' : 'Manage ▼'}
@@ -72,45 +111,94 @@ function SessionTile({
       {/* Expanded controls */}
       {expanded && (
         <div style={{ marginTop: 12, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
-          {isEditing ? (
-            <div>
+
+          {/* Status + quick actions row */}
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
+            <select
+              value={sess.status}
+              onChange={(e) => updateStatus(sess.id, e.target.value)}
+              style={{ ...A.statusSelect, background: sm.bg, color: sm.textColor, border: `1px solid ${sm.border}` }}
+            >
+              <option value="pending">Pending</option>
+              <option value="active">Active</option>
+              <option value="complete">Complete</option>
+            </select>
+            {!draft && (
+              <button onClick={openEdit} style={A.ghostBtn}>Edit Details</button>
+            )}
+            <button
+              onClick={() => removeSession(sess.id)}
+              style={{ ...A.ghostBtn, color: 'var(--red-txt)', borderColor: 'var(--red-txt)' }}
+            >
+              Delete
+            </button>
+          </div>
+
+          {/* Edit details form */}
+          {draft && (
+            <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8, padding: '12px 14px', marginBottom: 12 }}>
               <div style={A.formRow}>
                 <div style={{ flex: 2 }}>
                   <label style={A.fieldLabel}>Name</label>
-                  <input value={editSession.name} onChange={(e) => setEditSession((n) => ({ ...n, name: e.target.value }))} />
+                  <input value={draft.name} onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))} />
                 </div>
                 <div style={{ flex: 1 }}>
                   <label style={A.fieldLabel}>Date</label>
-                  <input type="date" value={editSession.date} onChange={(e) => setEditSession((n) => ({ ...n, date: e.target.value }))} />
+                  <input type="date" value={draft.date} onChange={(e) => setDraft((d) => ({ ...d, date: e.target.value }))} />
                 </div>
                 <div style={{ width: 110 }}>
                   <label style={A.fieldLabel}>Time</label>
-                  <input type="time" value={editSession.time} onChange={(e) => setEditSession((n) => ({ ...n, time: e.target.value }))} />
+                  <input type="time" value={draft.time} onChange={(e) => setDraft((d) => ({ ...d, time: e.target.value }))} />
                 </div>
               </div>
-              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                <button onClick={saveSessionEdit} style={A.saveBtn}>Save</button>
+              <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                <button onClick={saveEdit} disabled={saving || !draft.name || !draft.date} style={A.saveBtn}>
+                  {saving ? 'Saving…' : 'Save'}
+                </button>
                 <button onClick={cancelEdit} style={A.ghostBtn}>Cancel</button>
               </div>
             </div>
-          ) : (
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-              <select
-                value={sess.status}
-                onChange={(e) => updateStatus(sess.id, e.target.value)}
-                style={{ ...A.statusSelect, background: sm.bg, color: sm.textColor, border: `1px solid ${sm.border}` }}
-              >
-                <option value="pending">Pending</option>
-                <option value="active">Active</option>
-                <option value="complete">Complete</option>
-              </select>
-              <button onClick={() => startEditSession(sess)} style={A.ghostBtn}>Edit</button>
-              <button onClick={() => removeSession(sess.id)} style={{ ...A.ghostBtn, color: 'var(--red-txt)', borderColor: 'var(--red-txt)' }}>Delete</button>
+          )}
+
+          {/* Player assignment — always shown for block sessions */}
+          {sess.block_id && onChangeAssignment && (
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text2)', marginBottom: 6 }}>
+                Player Assignment
+                {changingAssignment && <span style={{ marginLeft: 8, fontSize: 11, color: 'var(--text3)', fontWeight: 400 }}>Updating…</span>}
+              </div>
+              {sess.session_type === 'skills' ? (
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {SPLIT_METHODS.map(({ method, label }) => (
+                    <button
+                      key={method}
+                      disabled={changingAssignment}
+                      style={{ ...A.splitBtn, fontSize: 11, padding: '4px 12px', border: '1px solid var(--border)', background: 'var(--bg3)', color: 'var(--text)', cursor: 'pointer' }}
+                      onClick={() => doAssignment({ splitMethod: method })}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {GAME_ASSIGNMENTS.map(({ method, label }) => (
+                    <button
+                      key={method}
+                      disabled={changingAssignment}
+                      style={{ ...A.splitBtn, fontSize: 11, padding: '4px 12px', border: '1px solid var(--border)', background: 'var(--bg3)', color: 'var(--text)', cursor: 'pointer' }}
+                      onClick={() => doAssignment({ playerAssignment: method })}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
           {/* Scorer assignment */}
-          <div style={{ marginTop: 10 }}>
+          <div>
             <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text2)', marginBottom: 6 }}>Scorers</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
               {scorers.map((u) => (
@@ -136,50 +224,48 @@ function SessionTile({
             </div>
           </div>
 
-          {/* Player assignment edit */}
-          {sess.block_id && onChangeAssignment && (
-            <div style={{ marginTop: 10 }}>
-              {!showAssignmentEdit ? (
-                <button onClick={() => setShowAssignmentEdit(true)} style={{ ...A.addScorerBtn, borderColor: 'var(--blue)', color: 'var(--blue-txt)' }}>
-                  Edit Player Assignment
-                </button>
-              ) : (
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text2)' }}>Reassign:</span>
-                  {sess.session_type === 'skills' ? (
-                    ['last_name', 'jersey_range', 'none', 'manual'].map((method) => (
-                      <button key={method} disabled={changingAssignment}
-                        style={{ ...A.splitBtn, fontSize: 11, padding: '4px 10px', border: '1px solid var(--border)', background: 'var(--bg3)', cursor: 'pointer' }}
-                        onClick={async () => {
-                          setChangingAssignment(true);
-                          try { await onChangeAssignment(sess.block_id, { splitMethod: method }); }
-                          finally { setChangingAssignment(false); setShowAssignmentEdit(false); }
-                        }}>
-                        {method === 'last_name' ? 'By Last Name' : method === 'jersey_range' ? 'By Jersey #' : method === 'none' ? 'All Together' : 'Manual'}
-                      </button>
-                    ))
-                  ) : (
-                    ['random', 'manual'].map((method) => (
-                      <button key={method} disabled={changingAssignment}
-                        style={{ ...A.splitBtn, fontSize: 11, padding: '4px 10px', border: '1px solid var(--border)', background: 'var(--bg3)', cursor: 'pointer' }}
-                        onClick={async () => {
-                          setChangingAssignment(true);
-                          try { await onChangeAssignment(sess.block_id, { playerAssignment: method }); }
-                          finally { setChangingAssignment(false); setShowAssignmentEdit(false); }
-                        }}>
-                        {method === 'random' ? 'Random' : 'Manual'}
-                      </button>
-                    ))
-                  )}
-                  <button onClick={() => setShowAssignmentEdit(false)} style={{ ...A.ghostBtn, fontSize: 11, padding: '4px 10px' }}>Cancel</button>
-                  {changingAssignment && <span style={{ fontSize: 11, color: 'var(--text3)' }}>Updating…</span>}
-                </div>
-              )}
-            </div>
-          )}
         </div>
       )}
     </div>
+  );
+}
+
+export function SessionsIndexView({ ageGroups, groupStats, openSessionGroup }) {
+  return (
+    <>
+      <div style={A.sectionHdr}>
+        <span style={A.sectionLabel}>Select an Age Group</span>
+      </div>
+      <div style={A.ageGroupGrid}>
+        {ageGroups.map((g) => {
+          const stats = groupStats(g.code);
+          const pct = stats.total_sessions > 0 ? Math.round((stats.complete_sessions / stats.total_sessions) * 100) : 0;
+          return (
+            <div key={g.id} style={A.agCard} className="ag-card" onClick={() => openSessionGroup(g)}>
+              <div style={A.agName}>{g.name}</div>
+              <div style={A.agStats}>
+                {[
+                  { val: stats.total_sessions, label: 'Sessions' },
+                  { val: stats.complete_sessions, label: 'Complete' },
+                  { val: stats.total_scores, label: 'Scores' },
+                ].map(({ val, label }) => (
+                  <div key={label} style={{ textAlign: 'center' }}>
+                    <div style={A.agStatVal}>{val}</div>
+                    <div style={A.agStatLabel}>{label}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={A.progressTrack}>
+                <div style={{ ...A.progressFill, width: `${pct}%`, background: pct === 100 ? 'var(--green)' : 'var(--maroon)' }} />
+              </div>
+              <div style={{ marginTop: 10 }}>
+                <span style={A.agLink}>View Sessions →</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </>
   );
 }
 
@@ -189,10 +275,8 @@ export default function SessionsView({
   updateSlot, addSlot, removeSlot, updateTeam, updateGame,
   createBlock, creatingBlock, blockMsg,
   sessDateFilter, setSessDateFilter, uniqueDates,
-  sessGroupFilter, setSessGroupFilter, uniqueGroups,
   sessLoading, filteredSessions, sessionScorers, users,
-  editingSessionId, editSession, setEditSession,
-  startEditSession, saveSessionEdit, cancelEdit,
+  onSaveSession,
   updateStatus, removeSession,
   assigningTo, setAssigningTo, assignUserId, setAssignUserId,
   assignScorer, unassignScorer, onChangeAssignment,
@@ -210,17 +294,6 @@ export default function SessionsView({
       )}
 
       <div style={A.dateFilterRow}>
-        <button onClick={() => setSessGroupFilter('all')} style={{ ...A.dateChip, ...(sessGroupFilter === 'all' ? A.dateChipActive : {}) }}>
-          All Groups
-        </button>
-        {uniqueGroups.map((g) => (
-          <button key={g} onClick={() => setSessGroupFilter(g)} style={{ ...A.dateChip, ...(sessGroupFilter === g ? A.dateChipActive : {}) }}>
-            {g}
-          </button>
-        ))}
-      </div>
-
-      <div style={A.dateFilterRow}>
         <button onClick={() => setSessDateFilter('all')} style={{ ...A.dateChip, ...(sessDateFilter === 'all' ? A.dateChipActive : {}) }}>
           All Dates
         </button>
@@ -233,15 +306,14 @@ export default function SessionsView({
 
       {sessLoading && <p style={A.muted}>Loading sessions…</p>}
       {!sessLoading && filteredSessions.length === 0 && (
-        <div style={A.emptyCard}>No sessions found. Use <strong>+ Session Block</strong> to create sessions.</div>
+        <div style={A.emptyCard}>No sessions yet. Use <strong>+ Session Block</strong> to create sessions.</div>
       )}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
         {!sessLoading && filteredSessions.map((sess) => (
           <SessionTile
             key={sess.id} sess={sess}
             scorers={sessionScorers[sess.id] || []} users={users}
-            editingSessionId={editingSessionId} editSession={editSession} setEditSession={setEditSession}
-            startEditSession={startEditSession} saveSessionEdit={saveSessionEdit} cancelEdit={cancelEdit}
+            onSaveSession={onSaveSession}
             updateStatus={updateStatus} removeSession={removeSession}
             assigningTo={assigningTo} setAssigningTo={setAssigningTo}
             assignUserId={assignUserId} setAssignUserId={setAssignUserId}

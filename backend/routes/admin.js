@@ -211,30 +211,34 @@ router.get('/users', ...guard, async (req, res) => {
 
 // PATCH /api/admin/users/:id
 router.patch('/users/:id', ...guard, async (req, res) => {
-  const { firstName, lastName, email, role, password } = req.body;
-  const fields = [], vals = [];
-  let i = 1;
-  if (firstName) { fields.push(`first_name=$${i++}`); vals.push(firstName); }
-  if (lastName)  { fields.push(`last_name=$${i++}`);  vals.push(lastName); }
-  if (email)     { fields.push(`email=$${i++}`);      vals.push(email.toLowerCase().trim()); }
-  if (role)      { fields.push(`role=$${i++}`);       vals.push(role); }
-  if (password)  {
-    const hash = await bcrypt.hash(password, 10);
-    fields.push(`password=$${i++}`);
-    vals.push(hash);
-  }
-  if (!fields.length) return res.status(400).json({ error: 'Nothing to update' });
-  vals.push(req.params.id);
+  const { firstName, lastName, email, role, password } = req.body || {};
   try {
+    const fields = [], vals = [];
+    let i = 1;
+    if (firstName) { fields.push(`first_name=$${i++}`); vals.push(firstName.trim()); }
+    if (lastName)  { fields.push(`last_name=$${i++}`);  vals.push(lastName.trim()); }
+    if (email)     { fields.push(`email=$${i++}`);      vals.push(email.toLowerCase().trim()); }
+    if (role)      { fields.push(`role=$${i++}`);       vals.push(role); }
+    if (password) {
+      if (password.length < 6) {
+        return res.status(400).json({ error: 'Password must be at least 6 characters' });
+      }
+      const hash = await bcrypt.hash(password, 10);
+      fields.push(`password=$${i++}`);
+      vals.push(hash);
+    }
+    if (!fields.length) return res.status(400).json({ error: 'Nothing to update' });
+    vals.push(req.params.id);
     const r = await pool.query(
       `UPDATE users SET ${fields.join(',')} WHERE id=$${i} RETURNING id,email,first_name,last_name,role`,
       vals
     );
     if (!r.rows[0]) return res.status(404).json({ error: 'User not found' });
-    res.json({ user: r.rows[0] });
+    return res.json({ user: r.rows[0] });
   } catch (err) {
     if (err.code === '23505') return res.status(409).json({ error: 'Email already in use' });
-    res.status(500).json({ error: 'Server error' });
+    console.error('Update user error:', err);
+    return res.status(500).json({ error: 'Update failed — please try again' });
   }
 });
 

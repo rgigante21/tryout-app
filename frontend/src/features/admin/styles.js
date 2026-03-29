@@ -56,6 +56,18 @@ export const ADMIN_CSS = `
 
   .sess-card { transition: border-color 0.15s; }
   .sess-card:hover { border-color: var(--gold-dark); }
+
+  @keyframes livePulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50%       { opacity: 0.4; transform: scale(0.85); }
+  }
+  .live-dot { animation: livePulse 1.8s ease-in-out infinite; }
+
+  @keyframes liveGlow {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(58, 141, 93, 0.25); }
+    50%       { box-shadow: 0 0 0 6px rgba(58, 141, 93, 0); }
+  }
+  .live-card { animation: liveGlow 2.4s ease-in-out infinite; }
 `;
 
 export const SB = {
@@ -169,7 +181,7 @@ export const A = {
   sectionHdr: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   sectionLabel: { fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#6B1E2E' },
   metricGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0,1fr))', gap: 12, marginBottom: 24 },
-  metricCard: { background: '#FFFFFF', border: '1.5px dashed var(--gold)', borderRadius: 10, padding: '18px 18px 14px' },
+  metricCard: { background: '#FFFFFF', border: '1px solid var(--border)', borderRadius: 10, padding: '18px 18px 14px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' },
   metricVal: { fontFamily: "'Barlow Condensed', sans-serif", fontSize: 40, fontWeight: 700, lineHeight: 1.1, color: '#6B1E2E' },
   metricLabel: { fontSize: 12, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: 6, fontWeight: 600 },
   ageGroupGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12, marginBottom: 24 },

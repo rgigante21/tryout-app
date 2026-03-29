@@ -5,7 +5,7 @@ import { api } from '../utils/api';
 import { A, ADMIN_CSS } from '../features/admin/styles';
 import { Sidebar, defaultBlock } from '../features/admin/shared';
 import OverviewView from '../features/admin/views/OverviewView';
-import SessionsView from '../features/admin/views/SessionsView';
+import SessionsView, { SessionsIndexView } from '../features/admin/views/SessionsView';
 import EventsView from '../features/admin/views/EventsView';
 import { GroupDetailView, GroupsIndexView } from '../features/admin/views/GroupsView';
 import RankingsView from '../features/admin/views/RankingsView';
@@ -13,14 +13,19 @@ import CoachesView from '../features/admin/views/CoachesView';
 import ResultsView from '../features/admin/views/ResultsView';
 
 function getAdminRoute(pathname) {
-  const rankingsMatch = matchPath('/admin/groups/:groupCode/rankings', pathname);
-  if (rankingsMatch) {
-    return { view: 'rankings', groupCode: rankingsMatch.params.groupCode };
+  const resultsRankingsMatch = matchPath('/admin/results/:groupCode/rankings', pathname);
+  if (resultsRankingsMatch) {
+    return { view: 'rankings', groupCode: resultsRankingsMatch.params.groupCode, from: 'results' };
   }
 
   const groupMatch = matchPath('/admin/groups/:groupCode', pathname);
   if (groupMatch) {
     return { view: 'groupDetail', groupCode: groupMatch.params.groupCode };
+  }
+
+  const sessionGroupMatch = matchPath('/admin/sessions/:groupCode', pathname);
+  if (sessionGroupMatch) {
+    return { view: 'sessionGroup', groupCode: sessionGroupMatch.params.groupCode };
   }
 
   if (matchPath('/admin/groups', pathname)) return { view: 'groups' };
@@ -45,11 +50,11 @@ export default function Admin() {
 
   const [todayDate, setTodayDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [todaySessions, setTodaySessions] = useState([]);
+  const [todayScorers, setTodayScorers] = useState({});
   const [todayLoading, setTodayLoading] = useState(false);
 
   const [allSessions, setAllSessions] = useState([]);
   const [sessDateFilter, setSessDateFilter] = useState('all');
-  const [sessGroupFilter, setSessGroupFilter] = useState('all');
   const [sessLoading, setSessLoading] = useState(false);
   const [sessionScorers, setSessionScorers] = useState({});
   const [editingSessionId, setEditingSessionId] = useState(null);
@@ -124,19 +129,27 @@ export default function Admin() {
     if (!activeEvent || route.view !== 'overview') return;
     setTodayLoading(true);
     api.allSessions(null, activeEvent.id, todayDate)
-      .then((r) => {
-        const list = r.sessions || [];
-        setTodaySessions(list.filter((s) => String(s.session_date).slice(0, 10) === todayDate));
+      .then(async (r) => {
+        const list = (r.sessions || []).filter((s) => String(s.session_date).slice(0, 10) === todayDate);
+        setTodaySessions(list);
+        if (list.length) {
+          const pairs = await Promise.all(
+            list.map((s) => api.sessionScorers(s.id).then((resp) => [s.id, resp.scorers || []]))
+          );
+          setTodayScorers(Object.fromEntries(pairs));
+        } else {
+          setTodayScorers({});
+        }
       })
-      .catch(() => setTodaySessions([]))
+      .catch(() => { setTodaySessions([]); setTodayScorers({}); })
       .finally(() => setTodayLoading(false));
   }, [activeEvent, route.view, todayDate]);
 
-  const loadAllSessions = useCallback(async () => {
+  const loadAllSessions = useCallback(async (ageGroupId = null) => {
     if (!activeEvent) return;
     setSessLoading(true);
     try {
-      const r = await api.allSessions(null, activeEvent.id);
+      const r = await api.allSessions(ageGroupId, activeEvent.id);
       const list = r.sessions || [];
       setAllSessions(list);
       if (list.length) {
@@ -152,7 +165,8 @@ export default function Admin() {
 
   useEffect(() => {
     if (route.view === 'sessions') loadAllSessions();
-  }, [route.view, loadAllSessions]);
+    else if (route.view === 'sessionGroup' && activeGroup) loadAllSessions(activeGroup.id);
+  }, [route.view, activeGroup, loadAllSessions]);
 
   const loadGroupData = useCallback(async (group, eventId) => {
     const [sessRes, playRes] = await Promise.all([
@@ -199,8 +213,13 @@ export default function Admin() {
     navigate(`/admin/groups/${group.code.toLowerCase()}`);
   }, [navigate]);
 
+  const openSessionGroup = useCallback((group) => {
+    setShowBlockWizard(false);
+    navigate(`/admin/sessions/${group.code.toLowerCase()}`);
+  }, [navigate]);
+
   const openRankings = useCallback((group) => {
-    navigate(`/admin/groups/${group.code.toLowerCase()}/rankings`);
+    navigate(`/admin/results/${group.code.toLowerCase()}/rankings`);
   }, [navigate]);
 
   const refreshEvents = async () => {
@@ -281,6 +300,14 @@ export default function Admin() {
     } catch (err) {
       alert(err.message);
     }
+  };
+
+  const patchSession = async (id, data) => {
+    const r = await api.updateSession(id, data);
+    const updater = (list) => list.map((item) => (item.id === id ? { ...item, ...r.session } : item));
+    setSessions(updater);
+    setAllSessions(updater);
+    refreshEvents();
   };
 
   const assignScorer = async (sessionId) => {
@@ -438,15 +465,20 @@ export default function Admin() {
     setAssigningSessionId('');
   };
 
-  const saveCoach = async () => {
+  const saveCoach = async (overridePassword = undefined) => {
     setSavingCoach(true);
     setEditCoachMsg({ type: '', text: '' });
     const payload = {};
     if (editCoach.firstName) payload.firstName = editCoach.firstName;
-    if (editCoach.lastName) payload.lastName = editCoach.lastName;
-    if (editCoach.email) payload.email = editCoach.email;
-    if (editCoach.role) payload.role = editCoach.role;
-    if (editCoach.password) payload.password = editCoach.password;
+    if (editCoach.lastName)  payload.lastName  = editCoach.lastName;
+    if (editCoach.email)     payload.email     = editCoach.email;
+    if (editCoach.role)      payload.role      = editCoach.role;
+    // overridePassword=null means "profile-only save, skip password"
+    // overridePassword=string means "password reset"
+    const pw = overridePassword !== null && overridePassword !== undefined
+      ? overridePassword
+      : (editCoach.password || '');
+    if (pw) payload.password = pw;
     try {
       const r = await api.updateUser(editingCoachId, payload);
       setUsers((us) => us.map((u) => (u.id === editingCoachId ? r.user : u)));
@@ -454,6 +486,7 @@ export default function Admin() {
       setEditCoachMsg({ type: 'success', text: 'Saved successfully.' });
     } catch (err) {
       setEditCoachMsg({ type: 'error', text: err.message });
+      throw err;
     } finally {
       setSavingCoach(false);
     }
@@ -581,21 +614,26 @@ export default function Admin() {
     dashboard.find((d) => d.age_group_code === code) || { total_sessions: 0, complete_sessions: 0, total_players: 0, total_scores: 0 };
 
   const uniqueDates = [...new Set(allSessions.map((s) => String(s.session_date).slice(0, 10)))].sort();
-  const uniqueGroups = [...new Set(allSessions.map((s) => s.age_group).filter(Boolean))].sort();
-  const filteredSessions = allSessions
-    .filter((s) => sessDateFilter === 'all' || String(s.session_date).slice(0, 10) === sessDateFilter)
-    .filter((s) => sessGroupFilter === 'all' || s.age_group === sessGroupFilter);
+  const filteredSessions = sessDateFilter === 'all'
+    ? allSessions
+    : allSessions.filter((s) => String(s.session_date).slice(0, 10) === sessDateFilter);
 
-  const currentNav = route.view === 'groupDetail' || route.view === 'rankings' ? 'groups' : route.view;
+  const currentNav = route.view === 'groupDetail' ? 'groups'
+    : route.view === 'sessionGroup' ? 'sessions'
+    : route.view === 'rankings' ? 'results'
+    : route.view;
   const backTarget = route.view === 'groupDetail'
     ? { label: '← Age Groups', to: '/admin/groups' }
-    : route.view === 'rankings' && activeGroup
-      ? { label: '← Group', to: `/admin/groups/${activeGroup.code.toLowerCase()}` }
-      : null;
+    : route.view === 'sessionGroup'
+      ? { label: '← Sessions', to: '/admin/sessions' }
+      : route.view === 'rankings'
+        ? { label: '← Results', to: '/admin/results' }
+        : null;
 
   const pageTitle = {
     overview: 'Dashboard',
     sessions: 'Sessions',
+    sessionGroup: activeGroup ? `${activeGroup.name} Sessions` : 'Sessions',
     events: 'Events',
     groups: 'Age Groups',
     groupDetail: activeGroup ? activeGroup.name : 'Age Groups',
@@ -620,7 +658,7 @@ export default function Admin() {
           </div>
           <div style={A.topbarRight}>
             {activeEvent && <span style={A.eventPill}>{activeEvent.name}</span>}
-            {route.view === 'sessions' && (
+            {route.view === 'sessionGroup' && (
               <button onClick={() => setShowBlockWizard((v) => !v)} style={showBlockWizard ? A.ghostBtn : A.primaryBtn}>
                 {showBlockWizard ? 'Cancel' : '+ Session Block'}
               </button>
@@ -645,6 +683,7 @@ export default function Admin() {
               setTodayDate={setTodayDate}
               todayLoading={todayLoading}
               todaySessions={todaySessions}
+              todayScorers={todayScorers}
               groupStats={groupStats}
               openGroup={openGroup}
               openRankings={openRankings}
@@ -652,6 +691,10 @@ export default function Admin() {
           )}
 
           {!loading && route.view === 'sessions' && (
+            <SessionsIndexView ageGroups={ageGroups} groupStats={groupStats} openSessionGroup={openSessionGroup} />
+          )}
+
+          {!loading && route.view === 'sessionGroup' && activeGroup && (
             <SessionsView
               showBlockWizard={showBlockWizard}
               setShowBlockWizard={setShowBlockWizard}
@@ -668,19 +711,11 @@ export default function Admin() {
               sessDateFilter={sessDateFilter}
               setSessDateFilter={setSessDateFilter}
               uniqueDates={uniqueDates}
-              sessGroupFilter={sessGroupFilter}
-              setSessGroupFilter={setSessGroupFilter}
-              uniqueGroups={uniqueGroups}
               sessLoading={sessLoading}
               filteredSessions={filteredSessions}
               sessionScorers={sessionScorers}
               users={users}
-              editingSessionId={editingSessionId}
-              editSession={editSession}
-              setEditSession={setEditSession}
-              startEditSession={startEditSession}
-              saveSessionEdit={saveSessionEdit}
-              cancelEdit={() => setEditingSessionId(null)}
+              onSaveSession={patchSession}
               updateStatus={updateStatus}
               removeSession={removeSession}
               assigningTo={assigningTo}

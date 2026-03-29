@@ -18,7 +18,13 @@ async function request(method, path, body) {
     headers: headers(),
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   });
-  const data = await res.json();
+  let data;
+  try {
+    data = await res.json();
+  } catch {
+    // Response was empty or not JSON (e.g. server crash, proxy error)
+    throw new Error(`Server error (${res.status}) — check that the backend is running`);
+  }
   if (!res.ok) {
     const err = new Error(data.error || 'Request failed');
     // Attach any extra fields the backend sends (e.g. code, opensAt, sessionDate)

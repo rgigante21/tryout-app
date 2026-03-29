@@ -44,7 +44,8 @@ function SessionMiniCard({ sess, updateStatus, removeSession, startEditSession }
 
 export function GroupsIndexView({ ageGroups, groupStats, openGroup, onAddAgeGroup }) {
   const [showAdd, setShowAdd] = useState(false);
-  const [newGroup, setNewGroup] = useState({ name: '', code: '', sortOrder: '0' });
+  const nextSortOrder = ageGroups.length > 0 ? Math.max(...ageGroups.map((g) => g.sort_order)) + 1 : 1;
+  const [newGroup, setNewGroup] = useState({ name: '', code: '', sortOrder: String(nextSortOrder) });
   const [creating, setCreating] = useState(false);
 
   const handleAdd = async () => {
@@ -83,11 +84,6 @@ export function GroupsIndexView({ ageGroups, groupStats, openGroup, onAddAgeGrou
               <label style={A.fieldLabel}>Code</label>
               <input placeholder="e.g. 8U" value={newGroup.code}
                 onChange={(e) => setNewGroup((n) => ({ ...n, code: e.target.value }))} />
-            </div>
-            <div style={{ width: 90 }}>
-              <label style={A.fieldLabel}>Sort order</label>
-              <input type="number" min="0" value={newGroup.sortOrder}
-                onChange={(e) => setNewGroup((n) => ({ ...n, sortOrder: e.target.value }))} />
             </div>
           </div>
           <div style={{ marginTop: 10 }}>
