@@ -35,6 +35,7 @@ export const NAV_ITEMS = [
   { id: 'events', label: 'Events', icon: '◷', section: 'tryouts', path: '/admin/events' },
   { id: 'sessions', label: 'Sessions', icon: '≡', section: 'tryouts', path: '/admin/sessions' },
   { id: 'groups', label: 'Age Groups', icon: '▤', section: 'tryouts', path: '/admin/groups' },
+  { id: 'checkin', label: 'Check-In', icon: '✓', section: 'tryouts', path: '/admin/checkin' },
   { id: 'results', label: 'Results', icon: '★', section: 'tryouts', path: '/admin/results' },
   { id: 'coaches', label: 'Coaches', icon: '◯', section: 'people', path: '/admin/coaches' },
 ];

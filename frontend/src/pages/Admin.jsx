@@ -11,6 +11,7 @@ import { GroupDetailView, GroupsIndexView } from '../features/admin/views/Groups
 import RankingsView from '../features/admin/views/RankingsView';
 import CoachesView from '../features/admin/views/CoachesView';
 import ResultsView from '../features/admin/views/ResultsView';
+import CheckInView from '../features/admin/views/CheckInView';
 
 function getAdminRoute(pathname) {
   const resultsRankingsMatch = matchPath('/admin/results/:groupCode/rankings', pathname);
@@ -33,6 +34,7 @@ function getAdminRoute(pathname) {
   if (matchPath('/admin/sessions', pathname)) return { view: 'sessions' };
   if (matchPath('/admin/coaches', pathname)) return { view: 'coaches' };
   if (matchPath('/admin/results', pathname)) return { view: 'results' };
+  if (matchPath('/admin/checkin', pathname)) return { view: 'checkin' };
   return { view: 'overview' };
 }
 
@@ -51,6 +53,7 @@ export default function Admin() {
   const [todayDate, setTodayDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [todaySessions, setTodaySessions] = useState([]);
   const [todayScorers, setTodayScorers] = useState({});
+  const [todayCheckIns, setTodayCheckIns] = useState({}); // { [sessionId]: { checked: N, total: M } }
   const [todayLoading, setTodayLoading] = useState(false);
 
   const [allSessions, setAllSessions] = useState([]);
@@ -133,15 +136,21 @@ export default function Admin() {
         const list = (r.sessions || []).filter((s) => String(s.session_date).slice(0, 10) === todayDate);
         setTodaySessions(list);
         if (list.length) {
-          const pairs = await Promise.all(
-            list.map((s) => api.sessionScorers(s.id).then((resp) => [s.id, resp.scorers || []]))
-          );
-          setTodayScorers(Object.fromEntries(pairs));
+          const [scorerPairs, playerPairs] = await Promise.all([
+            Promise.all(list.map((s) => api.sessionScorers(s.id).then((resp) => [s.id, resp.scorers || []]))),
+            Promise.all(list.map((s) => api.sessionPlayers(s.id).then((resp) => {
+              const players = resp.players || [];
+              return [s.id, { checked: players.filter((p) => p.checked_in).length, total: players.length }];
+            }).catch(() => [s.id, { checked: 0, total: s.player_count || 0 }]))),
+          ]);
+          setTodayScorers(Object.fromEntries(scorerPairs));
+          setTodayCheckIns(Object.fromEntries(playerPairs));
         } else {
           setTodayScorers({});
+          setTodayCheckIns({});
         }
       })
-      .catch(() => { setTodaySessions([]); setTodayScorers({}); })
+      .catch(() => { setTodaySessions([]); setTodayScorers({}); setTodayCheckIns({}); })
       .finally(() => setTodayLoading(false));
   }, [activeEvent, route.view, todayDate]);
 
@@ -640,6 +649,7 @@ export default function Admin() {
     rankings: activeGroup ? `${activeGroup.name} Rankings` : 'Rankings',
     coaches: 'Coaches & Scorers',
     results: 'Results',
+    checkin: 'Check-In',
   }[route.view];
 
   return (
@@ -684,6 +694,7 @@ export default function Admin() {
               todayLoading={todayLoading}
               todaySessions={todaySessions}
               todayScorers={todayScorers}
+              todayCheckIns={todayCheckIns}
               groupStats={groupStats}
               openGroup={openGroup}
               openRankings={openRankings}
@@ -819,6 +830,13 @@ export default function Admin() {
 
           {!loading && route.view === 'rankings' && (
             <RankingsView rankings={rankings} activeGroup={activeGroup} />
+          )}
+
+          {!loading && route.view === 'checkin' && (
+            <CheckInView
+              activeEvent={activeEvent}
+              ageGroups={ageGroups}
+            />
           )}
 
           {!loading && route.view === 'coaches' && (

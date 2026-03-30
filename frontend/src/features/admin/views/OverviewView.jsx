@@ -53,7 +53,7 @@ function TypeBadge({ type }) {
 
 // ── Live Session Card ─────────────────────────────────────────────────────────
 
-function LiveCard({ sess, scorers }) {
+function LiveCard({ sess, scorers, checkIns }) {
   const scored = sess.total_scores ?? 0;
   const total  = sess.player_count ?? 0;
   const pct    = total > 0 ? Math.round((scored / total) * 100) : 0;
@@ -101,6 +101,11 @@ function LiveCard({ sess, scorers }) {
           <div style={{ fontSize: 11, fontWeight: 700, color: isComplete ? 'var(--green)' : 'var(--text3)', marginTop: 4, textAlign: 'center' }}>
             {isComplete ? '✓ Complete' : `${pct}%`}
           </div>
+          {checkIns && (
+            <div style={{ marginTop: 8, fontSize: 11, fontWeight: 700, color: 'var(--blue-txt)', background: 'var(--blue-bg)', border: '1px solid var(--blue)', borderRadius: 20, padding: '3px 10px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+              👤 {checkIns.checked} / {checkIns.total} checked in
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -109,7 +114,7 @@ function LiveCard({ sess, scorers }) {
 
 // ── Schedule Session Row ──────────────────────────────────────────────────────
 
-function ScheduleCard({ sess, scorers }) {
+function ScheduleCard({ sess, scorers, checkIns }) {
   const scored  = sess.total_scores ?? 0;
   const total   = sess.player_count ?? 0;
   const pct     = total > 0 ? Math.round((scored / total) * 100) : 0;
@@ -153,6 +158,11 @@ function ScheduleCard({ sess, scorers }) {
             {total} players
           </div>
         )}
+        {checkIns && checkIns.total > 0 && (
+          <div style={{ fontSize: 11, color: 'var(--blue-txt)', marginTop: 4, fontWeight: 600 }}>
+            👤 {checkIns.checked} / {checkIns.total} in
+          </div>
+        )}
       </div>
     </div>
   );
@@ -169,6 +179,7 @@ export default function OverviewView({
   todayLoading,
   todaySessions,
   todayScorers = {},
+  todayCheckIns = {},
   groupStats,
   openGroup,
   openRankings,
@@ -220,7 +231,7 @@ export default function OverviewView({
             gap: 14,
           }}>
             {activeSessions.map((sess) => (
-              <LiveCard key={sess.id} sess={sess} scorers={todayScorers[sess.id] || []} />
+              <LiveCard key={sess.id} sess={sess} scorers={todayScorers[sess.id] || []} checkIns={todayCheckIns[sess.id]} />
             ))}
           </div>
         </div>
@@ -257,7 +268,7 @@ export default function OverviewView({
               .slice()
               .sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''))
               .map((sess) => (
-                <ScheduleCard key={sess.id} sess={sess} scorers={todayScorers[sess.id] || []} />
+                <ScheduleCard key={sess.id} sess={sess} scorers={todayScorers[sess.id] || []} checkIns={todayCheckIns[sess.id]} />
               ))
             }
             {activeSessions.length > 0 && (
@@ -266,7 +277,7 @@ export default function OverviewView({
                   .slice()
                   .sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''))
                   .map((sess) => (
-                    <ScheduleCard key={sess.id} sess={sess} scorers={todayScorers[sess.id] || []} />
+                    <ScheduleCard key={sess.id} sess={sess} scorers={todayScorers[sess.id] || []} checkIns={todayCheckIns[sess.id]} />
                   ))
                 }
                 {otherSessions.length === 0 && (
