@@ -16,10 +16,22 @@ export default function EventsView({
   eventMsg,
   restoreEvent,
 }) {
+  const hasAnything = activeEvent || events.filter((e) => e.archived).length > 0;
+
   return (
     <div>
       {eventMsg.text && (
         <div style={eventMsg.type === 'success' ? A.successBox : A.errorBox}>{eventMsg.text}</div>
+      )}
+
+      {!hasAnything && !showCreateEvent && (
+        <div style={{ textAlign: 'center', padding: '64px 24px' }}>
+          <div style={{ fontSize: 40, marginBottom: 16 }}>📅</div>
+          <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--text)', marginBottom: 8 }}>No events yet</div>
+          <div style={{ fontSize: 13, color: 'var(--text3)', maxWidth: 320, margin: '0 auto' }}>
+            Events organize your tryout season. Create one to start adding age groups, sessions, and players.
+          </div>
+        </div>
       )}
 
       {activeEvent && (

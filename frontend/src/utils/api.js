@@ -1,34 +1,29 @@
 const BASE = '/api';
 
-function getToken() {
-  return localStorage.getItem('token');
-}
-
-function headers() {
-  const token = getToken();
-  return {
-    'Content-Type': 'application/json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
-}
-
+/**
+ * Core fetch wrapper.
+ * Uses credentials: 'include' so the browser sends the auth_token HttpOnly cookie.
+ * No Authorization header — token lives in a cookie managed by the server.
+ */
 async function request(method, path, body) {
   const res = await fetch(`${BASE}${path}`, {
     method,
-    headers: headers(),
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   });
+
   let data;
   try {
     data = await res.json();
   } catch {
-    // Response was empty or not JSON (e.g. server crash, proxy error)
     throw new Error(`Server error (${res.status}) — check that the backend is running`);
   }
+
   if (!res.ok) {
     const err = new Error(data.error || 'Request failed');
-    // Attach any extra fields the backend sends (e.g. code, opensAt, sessionDate)
     Object.assign(err, data);
+    err.status = res.status;
     throw err;
   }
   return data;
@@ -37,7 +32,7 @@ async function request(method, path, body) {
 export const api = {
   // Auth
   login:    (email, password) => request('POST', '/auth/login', { email, password }),
-  register: (payload)         => request('POST', '/auth/register', payload),
+  logout:   ()                => request('POST', '/auth/logout'),
   me:       ()                => request('GET',  '/auth/me'),
 
   // Sessions
@@ -49,34 +44,46 @@ export const api = {
     if (date)       p.append('date', date);
     return request('GET', `/sessions?${p}`);
   },
-  sessionPlayers: (id)                 => request('GET',    `/sessions/${id}/players`),
-  sessionScorers: (id)                 => request('GET',    `/sessions/${id}/scorers`),
-  createSession:  (data)               => request('POST',   '/sessions', data),
-  updateSession:  (id, data)           => request('PATCH',  `/sessions/${id}`, data),
-  deleteSession:  (id)                 => request('DELETE', `/sessions/${id}`),
-  assignScorer:   (sessionId, userId)  => request('POST',   `/sessions/${sessionId}/assign`, { userId }),
-  unassignScorer: (sessionId, userId)  => request('DELETE', `/sessions/${sessionId}/scorers/${userId}`),
+  sessionPlayers:  (id)               => request('GET',    `/sessions/${id}/players`),
+  sessionScorers:  (id)               => request('GET',    `/sessions/${id}/scorers`),
+  sessionSiblings: (id)               => request('GET',    `/sessions/${id}/siblings`),
+  createSession:   (data)             => request('POST',   '/sessions', data),
+  updateSession:   (id, data)         => request('PATCH',  `/sessions/${id}`, data),
+  deleteSession:   (id)               => request('DELETE', `/sessions/${id}`),
+  assignScorer:    (sessionId, userId)=> request('POST',   `/sessions/${sessionId}/assign`, { userId }),
+  unassignScorer:  (sessionId, userId)=> request('DELETE', `/sessions/${sessionId}/scorers/${userId}`),
 
   // Scores
   submitScore: (payload)             => request('POST', '/scores', payload),
   rankings:    (ageGroupId, eventId) => request('GET', `/scores/rankings/${ageGroupId}/${eventId}`),
   dashboard:   ()                    => request('GET', '/scores/dashboard'),
 
-  // Admin
-  ageGroups:     ()                            => request('GET',    '/admin/age-groups'),
-  createAgeGroup:(data)                        => request('POST',   '/admin/age-groups', data),
-  events:        ()                            => request('GET',    '/admin/events'),
-  createEvent:   (data)                        => request('POST',   '/admin/events', data),
-  archiveEvent:  (id, archive)                 => request('PATCH',  `/admin/events/${id}/archive`, { archive }),
-  eventStats:    (id)                          => request('GET',    `/admin/events/${id}/stats`),
-  players:       (ageGroupId, eventId)         => request('GET',    `/admin/players?age_group_id=${ageGroupId}&event_id=${eventId}`),
-  addPlayer:     (data)                        => request('POST',   '/admin/players', data),
-  deletePlayer:  (id)                          => request('DELETE', `/admin/players/${id}`),
-  bulkPlayers:   (data)                        => request('POST',   '/admin/players/bulk', data),
-  setOutcome:    (id, outcome)                 => request('PATCH',  `/admin/players/${id}/outcome`, { outcome }),
-  users:         ()                            => request('GET',    '/admin/users'),
-  updateUser:    (id, data)                    => request('PATCH',  `/admin/users/${id}`, data),
-  userSessions:  (id)                          => request('GET',    `/admin/users/${id}/sessions`),
+  // Admin — users
+  users:        ()                            => request('GET',    '/admin/users'),
+  createUser:   (data)                        => request('POST',   '/admin/users', data),
+  updateUser:   (id, data)                    => request('PATCH',  `/admin/users/${id}`, data),
+  userSessions: (id)                          => request('GET',    `/admin/users/${id}/sessions`),
+
+  // Admin — age groups
+  ageGroups:     ()     => request('GET',  '/admin/age-groups'),
+  createAgeGroup:(data) => request('POST', '/admin/age-groups', data),
+
+  // Admin — events
+  events:       ()               => request('GET',   '/admin/events'),
+  createEvent:  (data)           => request('POST',  '/admin/events', data),
+  archiveEvent: (id, archive)    => request('PATCH', `/admin/events/${id}/archive`, { archive }),
+  eventStats:   (id)             => request('GET',   `/admin/events/${id}/stats`),
+
+  // Admin — players
+  players:      (ageGroupId, eventId) => request('GET',    `/admin/players?age_group_id=${ageGroupId}&event_id=${eventId}`),
+  addPlayer:    (data)                => request('POST',   '/admin/players', data),
+  deletePlayer: (id)                  => request('DELETE', `/admin/players/${id}`),
+  bulkPlayers:  (data)                => request('POST',   '/admin/players/bulk', data),
+  setOutcome:   (id, outcome)         => request('PATCH',  `/admin/players/${id}/outcome`, { outcome }),
+
+  // Admin — session completion & finalization
+  sessionCompletion: (id)          => request('GET',   `/admin/sessions/${id}/completion`),
+  finalizeSession:   (id, status)  => request('PATCH', `/admin/sessions/${id}/finalize`, { status }),
 
   // Session Blocks
   sessionBlocks: (eventId, ageGroupId) => {
@@ -84,11 +91,14 @@ export const api = {
     if (ageGroupId) p.append('age_group_id', ageGroupId);
     return request('GET', `/session-blocks?${p}`);
   },
-  createSessionBlock: (data) => request('POST', '/session-blocks', data),
-  updateSessionBlock: (id, data) => request('PATCH', `/session-blocks/${id}`, data),
+  createSessionBlock: (data) => request('POST',   '/session-blocks', data),
+  updateSessionBlock: (id, data) => request('PATCH',  `/session-blocks/${id}`, data),
   deleteSessionBlock: (id)   => request('DELETE', `/session-blocks/${id}`),
-  reassignBlock:      (id)   => request('POST', `/session-blocks/${id}/reassign`),
+  reassignBlock:      (id)   => request('POST',   `/session-blocks/${id}/reassign`),
   suggestRanges:      (id, slots) => request('GET', `/session-blocks/${id}/suggest-ranges?slots=${slots}`),
+
+  // Session players — move
+  movePlayer: (data) => request('PATCH', '/session-players/move', data),
 
   // Import
   importPreview: (data) => request('POST', '/import/preview', data),
@@ -96,8 +106,11 @@ export const api = {
   csvTemplate:   ()     => `${BASE}/import/csv-template`,
 
   // Check-in
-  checkin: (sessionId, playerId, checkedIn = true) =>
-    request('PATCH', `/sessions/${sessionId}/players/${playerId}/checkin`, { checkedIn }),
+  checkin: (sessionId, playerId, checkedIn = true, attendanceStatus = undefined) =>
+    request('PATCH', `/sessions/${sessionId}/players/${playerId}/checkin`, {
+      checkedIn,
+      ...(attendanceStatus !== undefined ? { attendanceStatus } : {}),
+    }),
 
   // Evaluation templates
   evaluationTemplates: () => request('GET', '/evaluation-templates'),

@@ -39,7 +39,7 @@ function getAdminRoute(pathname) {
 }
 
 export default function Admin() {
-  const { user, logout } = useAuth();
+  const { user, logout, handleAuthError } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const route = getAdminRoute(location.pathname);
@@ -124,7 +124,10 @@ export default function Admin() {
         setUsers(us.users);
         setDashboard(dash.dashboard);
       })
-      .catch(console.error)
+      .catch((err) => {
+        handleAuthError(err);
+        console.error(err);
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -420,14 +423,16 @@ export default function Admin() {
         }));
         payload.playerAssignment = blockWizard.playerAssignment;
       }
-      const r = await api.createSessionBlock(payload);
-      const newSessions = r.sessions || [];
-      setSessions((prev) => [...prev, ...newSessions]);
-      setAllSessions((prev) => [...prev, ...newSessions]);
+      await api.createSessionBlock(payload);
+      // Re-fetch from server so session names are authoritative (not optimistic)
       setShowBlockWizard(false);
       setBlockMsg('');
       setBlockWizard(defaultBlock());
       refreshEvents();
+      if (activeGroup) {
+        await loadGroupData(activeGroup, activeEvent.id);
+      }
+      await loadAllSessions(activeGroup?.id || null);
     } catch (err) {
       setBlockMsg(err.message || 'Failed to create block');
     } finally {
@@ -442,7 +447,7 @@ export default function Admin() {
     setCoachError('');
     setCoachSuccess('');
     try {
-      const created = await api.register({ firstName, lastName, email, password, role });
+      const created = await api.createUser({ firstName, lastName, email, password, role });
       if (coachSessions.size > 0) {
         await Promise.all([...coachSessions].map((sid) => api.assignScorer(sid, created.user.id)));
       }

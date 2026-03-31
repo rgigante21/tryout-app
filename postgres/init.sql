@@ -127,12 +127,13 @@ CREATE TABLE players (
 -- ─────────────────────────────────────────
 
 CREATE TABLE session_players (
-  id            SERIAL PRIMARY KEY,
-  session_id    INT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-  player_id     INT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
-  team_number   SMALLINT,        -- populated for game sessions
-  checked_in    BOOLEAN DEFAULT FALSE,
-  checked_in_at TIMESTAMPTZ,
+  id                SERIAL PRIMARY KEY,
+  session_id        INT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  player_id         INT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+  team_number       SMALLINT,        -- populated for game sessions
+  checked_in        BOOLEAN DEFAULT FALSE,
+  checked_in_at     TIMESTAMPTZ,
+  attendance_status VARCHAR(20),     -- checked_in | late_arrival | no_show | excused
   UNIQUE(session_id, player_id)
 );
 
@@ -234,6 +235,29 @@ CREATE INDEX idx_session_players_sess ON session_players(session_id);
 CREATE INDEX idx_session_players_play ON session_players(player_id);
 CREATE INDEX idx_score_entries_score  ON score_entries(score_id);
 CREATE INDEX idx_session_blocks_event ON session_blocks(event_id);
+
+-- ─────────────────────────────────────────
+-- AUDIT LOG
+-- Security-relevant event trail.
+-- Never store: passwords, tokens, DB credentials, secrets.
+-- ─────────────────────────────────────────
+
+CREATE TABLE audit_log (
+  id         BIGSERIAL PRIMARY KEY,
+  event      VARCHAR(100) NOT NULL,
+  user_id    INT REFERENCES users(id) ON DELETE SET NULL,
+  details    JSONB        NOT NULL DEFAULT '{}',
+  created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_audit_log_event      ON audit_log (event);
+CREATE INDEX idx_audit_log_user_id    ON audit_log (user_id);
+CREATE INDEX idx_audit_log_created_at ON audit_log (created_at DESC);
+
+COMMENT ON TABLE audit_log IS
+  'Security/ops event trail. Audited events: login_success, login_failure, logout, '
+  'account_created, role_changed, password_changed, score_submitted, player_moved, '
+  'session_status_changed.';
 
 -- ─────────────────────────────────────────
 -- SEED DATA

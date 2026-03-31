@@ -1,6 +1,6 @@
 const express = require('express');
 const pool    = require('../db/pool');
-const { authMiddleware, requireRole } = require('../middleware/auth');
+const { authMiddleware, requireRole, requireAssignedSessionAccess } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -94,6 +94,31 @@ router.get('/', authMiddleware, requireRole('admin', 'coordinator'), async (req,
   }
 });
 
+// GET /api/sessions/:id/siblings — sessions from the same block
+// Admin/coordinator: always; scorer: only if assigned to the source session
+router.get('/:id/siblings', authMiddleware, requireAssignedSessionAccess(), async (req, res) => {
+  const sessionId = parseInt(req.params.id);
+  try {
+    const srcRes = await pool.query('SELECT block_id FROM sessions WHERE id = $1', [sessionId]);
+    const src = srcRes.rows[0];
+    if (!src) return res.status(404).json({ error: 'Session not found' });
+    if (!src.block_id) return res.json({ sessions: [] });
+
+    const r = await pool.query(`
+      SELECT s.id, s.name, s.session_date, s.start_time, s.status,
+             s.last_name_start, s.last_name_end, s.jersey_min, s.jersey_max
+      FROM sessions s
+      WHERE s.block_id = $1 AND s.id != $2
+      ORDER BY s.start_time
+    `, [src.block_id, sessionId]);
+
+    res.json({ sessions: r.rows });
+  } catch (err) {
+    console.error('Get session siblings error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // POST /api/sessions
 router.post('/', authMiddleware, requireRole('admin', 'coordinator'), async (req, res) => {
   const { eventId, ageGroupId, name, sessionDate, startTime, sessionType = 'skills' } = req.body;
@@ -119,6 +144,9 @@ router.patch('/:id', authMiddleware, requireRole('admin', 'coordinator'), async 
   const { status, name, sessionDate, startTime, sessionType } = req.body;
   if (sessionType && !['skills', 'game'].includes(sessionType)) {
     return res.status(400).json({ error: 'sessionType must be "skills" or "game"' });
+  }
+  if (status && !['pending', 'active', 'complete', 'scoring_complete', 'finalized'].includes(status)) {
+    return res.status(400).json({ error: 'Invalid status value' });
   }
   try {
     const r = await pool.query(
@@ -155,9 +183,8 @@ router.delete('/:id', authMiddleware, requireRole('admin', 'coordinator'), async
 });
 
 // GET /api/sessions/:id/players
-// Uses session_players (explicit roster) when available.
-// Falls back to age_group + event query for sessions without a block (backward compat).
-router.get('/:id/players', authMiddleware, async (req, res) => {
+// Resource-level check: scorers can only access sessions they are assigned to.
+router.get('/:id/players', authMiddleware, requireAssignedSessionAccess(), async (req, res) => {
   const sessionId = parseInt(req.params.id);
   const isAdmin   = req.user.role === 'admin' || req.user.role === 'coordinator';
 
@@ -189,11 +216,10 @@ router.get('/:id/players', authMiddleware, async (req, res) => {
 
     let playersResult;
     if (hasExplicitRoster) {
-      // New path: use session_players for the roster
       playersResult = await pool.query(`
         SELECT
           p.id, p.first_name, p.last_name, p.jersey_number, p.position,
-          sp.checked_in, sp.checked_in_at, sp.team_number,
+          sp.checked_in, sp.checked_in_at, sp.team_number, sp.attendance_status,
           sc.skating, sc.puck_skills, sc.hockey_sense, sc.notes,
           sc.id AS score_id, sc.status AS score_status,
           CASE WHEN sc.id IS NOT NULL THEN true ELSE false END AS scored
@@ -207,11 +233,11 @@ router.get('/:id/players', authMiddleware, async (req, res) => {
         ORDER BY p.jersey_number
       `, [sessionId, req.user.id]);
     } else {
-      // Legacy path: get all players for this age group + event
       playersResult = await pool.query(`
         SELECT
           p.id, p.first_name, p.last_name, p.jersey_number, p.position,
           false AS checked_in, null AS checked_in_at, null AS team_number,
+          null AS attendance_status,
           sc.skating, sc.puck_skills, sc.hockey_sense, sc.notes,
           sc.id AS score_id, sc.status AS score_status,
           CASE WHEN sc.id IS NOT NULL THEN true ELSE false END AS scored
@@ -225,7 +251,23 @@ router.get('/:id/players', authMiddleware, async (req, res) => {
       `, [sessionId, req.user.id, session.age_group_id, session.event_id]);
     }
 
-    res.json({ session, players: playersResult.rows, hasExplicitRoster });
+    // Completion stats: how many players have been scored by at least one scorer
+    const completionRes = await pool.query(`
+      SELECT
+        COUNT(DISTINCT sp2.player_id)::int                                    AS total_players,
+        COUNT(DISTINCT CASE WHEN sp2.checked_in THEN sp2.player_id END)::int  AS checked_in_count,
+        COUNT(DISTINCT sc2.player_id)::int                                     AS scored_players
+      FROM session_players sp2
+      LEFT JOIN scores sc2 ON sc2.player_id = sp2.player_id AND sc2.session_id = $1
+      WHERE sp2.session_id = $1
+    `, [sessionId]);
+
+    res.json({
+      session,
+      players: playersResult.rows,
+      hasExplicitRoster,
+      completion: completionRes.rows[0] || { total_players: 0, checked_in_count: 0, scored_players: 0 },
+    });
   } catch (err) {
     console.error('Get session players error:', err);
     res.status(500).json({ error: 'Server error' });
@@ -233,28 +275,32 @@ router.get('/:id/players', authMiddleware, async (req, res) => {
 });
 
 // PATCH /api/sessions/:id/players/:playerId/checkin
-// Mark a player as checked in (or undo check-in)
 router.patch('/:id/players/:playerId/checkin', authMiddleware, requireRole('admin', 'coordinator'), async (req, res) => {
-  const { checkedIn = true } = req.body;
+  const { checkedIn = true, attendanceStatus } = req.body;
   const sessionId  = parseInt(req.params.id);
   const playerId   = parseInt(req.params.playerId);
+
+  const validStatuses = [null, 'checked_in', 'late_arrival', 'no_show', 'excused'];
+  if (attendanceStatus !== undefined && !validStatuses.includes(attendanceStatus)) {
+    return res.status(400).json({ error: 'Invalid attendanceStatus' });
+  }
 
   try {
     const r = await pool.query(
       `UPDATE session_players
-       SET checked_in    = $1,
-           checked_in_at = CASE WHEN $1 = true THEN NOW() ELSE NULL END
+       SET checked_in        = $1,
+           checked_in_at     = CASE WHEN $1 = true THEN NOW() ELSE NULL END,
+           attendance_status = COALESCE($4, attendance_status)
        WHERE session_id = $2 AND player_id = $3
        RETURNING *`,
-      [!!checkedIn, sessionId, playerId]
+      [!!checkedIn, sessionId, playerId, attendanceStatus || null]
     );
 
     if (!r.rows[0]) {
-      // Player not in session_players — create the record (walk-in)
       const insert = await pool.query(
-        `INSERT INTO session_players (session_id, player_id, checked_in, checked_in_at)
-         VALUES ($1, $2, $3, $4) RETURNING *`,
-        [sessionId, playerId, !!checkedIn, checkedIn ? new Date() : null]
+        `INSERT INTO session_players (session_id, player_id, checked_in, checked_in_at, attendance_status)
+         VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+        [sessionId, playerId, !!checkedIn, checkedIn ? new Date() : null, attendanceStatus || null]
       );
       return res.json({ sessionPlayer: insert.rows[0], walkin: true });
     }

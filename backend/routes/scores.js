@@ -1,18 +1,72 @@
 const express = require('express');
 const pool    = require('../db/pool');
 const { authMiddleware, requireRole } = require('../middleware/auth');
+const { logAudit } = require('../utils/audit');
 
 const router = express.Router();
 
-// POST /api/scores - submit or update a score
+// POST /api/scores — submit or update a score
+// Security: scorer must be assigned to the session; player must belong to that session.
 router.post('/', authMiddleware, async (req, res) => {
   const { sessionId, playerId, skating, puckSkills, hockeySense, notes } = req.body;
 
   if (!sessionId || !playerId || !skating || !puckSkills || !hockeySense) {
-    return res.status(400).json({ error: 'All score fields required' });
+    return res.status(400).json({ error: 'sessionId, playerId, skating, puckSkills, and hockeySense are required' });
   }
 
+  const isAdmin = req.user.role === 'admin' || req.user.role === 'coordinator';
+
   try {
+    // 1. Verify the session exists and is not finalized
+    const sessionRes = await pool.query(
+      'SELECT id, status FROM sessions WHERE id = $1',
+      [sessionId]
+    );
+    if (!sessionRes.rows[0]) {
+      return res.status(404).json({ error: 'Session not found' });
+    }
+    const session = sessionRes.rows[0];
+
+    if (session.status === 'finalized' && !isAdmin) {
+      return res.status(403).json({ error: 'This session is finalized — scores cannot be changed' });
+    }
+
+    // 2. Scorer must be assigned to this session (skip check for admin/coordinator)
+    if (!isAdmin) {
+      const assignedRes = await pool.query(
+        'SELECT 1 FROM session_scorers WHERE session_id = $1 AND user_id = $2',
+        [sessionId, req.user.id]
+      );
+      if (!assignedRes.rows[0]) {
+        return res.status(403).json({ error: 'Access denied: you are not assigned to this session' });
+      }
+    }
+
+    // 3. Verify the player belongs to this session's roster (explicit roster check)
+    //    If session has no session_players rows, fall back to age_group/event membership.
+    const rosterCountRes = await pool.query(
+      'SELECT COUNT(*)::int AS cnt FROM session_players WHERE session_id = $1',
+      [sessionId]
+    );
+    const hasExplicitRoster = rosterCountRes.rows[0].cnt > 0;
+
+    if (hasExplicitRoster) {
+      const inRoster = await pool.query(
+        'SELECT 1 FROM session_players WHERE session_id = $1 AND player_id = $2',
+        [sessionId, playerId]
+      );
+      if (!inRoster.rows[0]) {
+        return res.status(403).json({ error: 'Player is not on this session roster' });
+      }
+    }
+
+    // 4. Validate score ranges (1–5)
+    for (const [key, val] of [['skating', skating], ['puckSkills', puckSkills], ['hockeySense', hockeySense]]) {
+      if (!Number.isInteger(Number(val)) || Number(val) < 1 || Number(val) > 5) {
+        return res.status(400).json({ error: `${key} must be an integer between 1 and 5` });
+      }
+    }
+
     const result = await pool.query(`
       INSERT INTO scores (session_id, player_id, scorer_id, skating, puck_skills, hockey_sense, notes)
       VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -26,6 +80,12 @@ router.post('/', authMiddleware, async (req, res) => {
       RETURNING *
     `, [sessionId, playerId, req.user.id, skating, puckSkills, hockeySense, notes || null]);
 
+    await logAudit('score_submitted', req.user.id, {
+      sessionId,
+      playerId,
+      scoreId: result.rows[0].id,
+    });
+
     res.json({ score: result.rows[0] });
   } catch (err) {
     console.error('Submit score error:', err);
@@ -33,7 +93,7 @@ router.post('/', authMiddleware, async (req, res) => {
   }
 });
 
-// GET /api/scores/rankings/:ageGroupId/:eventId - combined rankings
+// GET /api/scores/rankings/:ageGroupId/:eventId
 router.get('/rankings/:ageGroupId/:eventId',
   authMiddleware, requireRole('admin', 'coordinator'),
   async (req, res) => {
@@ -71,7 +131,7 @@ router.get('/rankings/:ageGroupId/:eventId',
   }
 );
 
-// GET /api/scores/dashboard - ops dashboard summary
+// GET /api/scores/dashboard
 router.get('/dashboard',
   authMiddleware, requireRole('admin', 'coordinator'),
   async (req, res) => {
@@ -82,7 +142,7 @@ router.get('/dashboard',
           ag.code       AS age_group_code,
           ag.sort_order,
           COUNT(DISTINCT s.id)    AS total_sessions,
-          COUNT(DISTINCT CASE WHEN s.status = 'complete' THEN s.id END) AS complete_sessions,
+          COUNT(DISTINCT CASE WHEN s.status = 'complete' OR s.status = 'scoring_complete' OR s.status = 'finalized' THEN s.id END) AS complete_sessions,
           COUNT(DISTINCT p.id)    AS total_players,
           COUNT(DISTINCT sc.id)   AS total_scores,
           COUNT(DISTINCT ss.user_id) AS total_scorers

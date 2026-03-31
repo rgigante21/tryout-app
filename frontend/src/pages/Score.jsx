@@ -25,7 +25,7 @@ function fmtDate(d) {
 }
 
 export default function Score() {
-  const { user, logout }          = useAuth();
+  const { user, logout, handleAuthError } = useAuth();
   const [sessions, setSessions]   = useState([]);
   const [session, setSession]     = useState(null);
   const [pendingErr, setPendingErr] = useState(null); // { opensAt, sessionDate }
@@ -40,9 +40,12 @@ export default function Score() {
   const loadSessions = useCallback(() => {
     api.mySessions()
       .then(setSessions)
-      .catch(console.error)
+      .catch((err) => {
+        handleAuthError(err);
+        console.error(err);
+      })
       .finally(() => setLoading(false));
-  }, []);
+  }, [handleAuthError]);
 
   useEffect(() => {
     loadSessions();
