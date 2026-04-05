@@ -339,6 +339,8 @@ export default function SessionsView({
   updateSlot, addSlot, removeSlot, updateTeam, updateGame,
   createBlock, creatingBlock, blockMsg,
   sessDateFilter, setSessDateFilter, uniqueDates,
+  ageGroups, ageGroupFilter, setAgeGroupFilter,
+  wizardAgeGroupId, setWizardAgeGroupId,
   sessLoading, filteredSessions, sessionScorers, users,
   onSaveSession,
   updateStatus, removeSession,
@@ -354,7 +356,23 @@ export default function SessionsView({
           updateTeam={updateTeam} updateGame={updateGame}
           createBlock={createBlock} creatingBlock={creatingBlock} blockMsg={blockMsg}
           onCancel={() => setShowBlockWizard(false)}
+          ageGroups={ageGroups}
+          wizardAgeGroupId={wizardAgeGroupId}
+          setWizardAgeGroupId={setWizardAgeGroupId}
         />
+      )}
+
+      {ageGroups?.length > 0 && (
+        <div style={A.dateFilterRow}>
+          <button onClick={() => setAgeGroupFilter('all')} style={{ ...A.dateChip, ...(ageGroupFilter === 'all' ? A.dateChipActive : {}) }}>
+            All
+          </button>
+          {ageGroups.map((g) => (
+            <button key={g.id} onClick={() => setAgeGroupFilter(String(g.id))} style={{ ...A.dateChip, ...(ageGroupFilter === String(g.id) ? A.dateChipActive : {}) }}>
+              {g.name}
+            </button>
+          ))}
+        </div>
       )}
 
       <div style={A.dateFilterRow}>

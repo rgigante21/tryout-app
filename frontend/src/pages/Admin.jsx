@@ -5,7 +5,7 @@ import { api } from '../utils/api';
 import { A, ADMIN_CSS } from '../features/admin/styles';
 import { Sidebar, defaultBlock } from '../features/admin/shared';
 import OverviewView from '../features/admin/views/OverviewView';
-import SessionsView, { SessionsIndexView } from '../features/admin/views/SessionsView';
+import SessionsView from '../features/admin/views/SessionsView';
 import EventsView from '../features/admin/views/EventsView';
 import { GroupDetailView, GroupsIndexView } from '../features/admin/views/GroupsView';
 import RankingsView from '../features/admin/views/RankingsView';
@@ -58,6 +58,8 @@ export default function Admin() {
 
   const [allSessions, setAllSessions] = useState([]);
   const [sessDateFilter, setSessDateFilter] = useState('all');
+  const [ageGroupFilter, setAgeGroupFilter] = useState('all');
+  const [wizardAgeGroupId, setWizardAgeGroupId] = useState('');
   const [sessLoading, setSessLoading] = useState(false);
   const [sessionScorers, setSessionScorers] = useState({});
   const [editingSessionId, setEditingSessionId] = useState(null);
@@ -178,7 +180,8 @@ export default function Admin() {
   useEffect(() => {
     if (route.view === 'sessions') loadAllSessions();
     else if (route.view === 'sessionGroup' && activeGroup) loadAllSessions(activeGroup.id);
-  }, [route.view, activeGroup, loadAllSessions]);
+    else if (route.view === 'events' && activeEvent) loadAllSessions();
+  }, [route.view, activeGroup, activeEvent, loadAllSessions]);
 
   const loadGroupData = useCallback(async (group, eventId) => {
     const [sessRes, playRes] = await Promise.all([
@@ -398,7 +401,7 @@ export default function Admin() {
     try {
       const payload = {
         eventId: activeEvent.id,
-        ageGroupId: activeGroup?.id,
+        ageGroupId: activeGroup?.id || wizardAgeGroupId || null,
         blockType: blockWizard.blockType,
         splitMethod: blockWizard.splitMethod,
         label: blockWizard.label || null,
@@ -428,6 +431,7 @@ export default function Admin() {
       setShowBlockWizard(false);
       setBlockMsg('');
       setBlockWizard(defaultBlock());
+      setWizardAgeGroupId('');
       refreshEvents();
       if (activeGroup) {
         await loadGroupData(activeGroup, activeEvent.id);
@@ -628,9 +632,9 @@ export default function Admin() {
     dashboard.find((d) => d.age_group_code === code) || { total_sessions: 0, complete_sessions: 0, total_players: 0, total_scores: 0 };
 
   const uniqueDates = [...new Set(allSessions.map((s) => String(s.session_date).slice(0, 10)))].sort();
-  const filteredSessions = sessDateFilter === 'all'
-    ? allSessions
-    : allSessions.filter((s) => String(s.session_date).slice(0, 10) === sessDateFilter);
+  const filteredSessions = allSessions
+    .filter((s) => sessDateFilter === 'all' || String(s.session_date).slice(0, 10) === sessDateFilter)
+    .filter((s) => ageGroupFilter === 'all' || String(s.age_group_id) === ageGroupFilter);
 
   const currentNav = route.view === 'groupDetail' ? 'groups'
     : route.view === 'sessionGroup' ? 'sessions'
@@ -673,15 +677,22 @@ export default function Admin() {
           </div>
           <div style={A.topbarRight}>
             {activeEvent && <span style={A.eventPill}>{activeEvent.name}</span>}
-            {route.view === 'sessionGroup' && (
+            {(route.view === 'sessionGroup' || route.view === 'sessions') && (
               <button onClick={() => setShowBlockWizard((v) => !v)} style={showBlockWizard ? A.ghostBtn : A.primaryBtn}>
                 {showBlockWizard ? 'Cancel' : '+ Session Block'}
               </button>
             )}
             {route.view === 'events' && (
-              <button onClick={() => setShowCreateEvent((v) => !v)} style={showCreateEvent ? A.ghostBtn : A.primaryBtn}>
-                {showCreateEvent ? 'Cancel' : '+ New Event'}
-              </button>
+              <>
+                {!showCreateEvent && (
+                  <button onClick={() => setShowBlockWizard((v) => !v)} style={showBlockWizard ? A.ghostBtn : A.primaryBtn}>
+                    {showBlockWizard ? 'Cancel' : '+ Session Block'}
+                  </button>
+                )}
+                <button onClick={() => { setShowBlockWizard(false); setShowCreateEvent((v) => !v); }} style={showCreateEvent ? A.ghostBtn : A.primaryBtn}>
+                  {showCreateEvent ? 'Cancel' : '+ New Event'}
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -707,7 +718,42 @@ export default function Admin() {
           )}
 
           {!loading && route.view === 'sessions' && (
-            <SessionsIndexView ageGroups={ageGroups} groupStats={groupStats} openSessionGroup={openSessionGroup} />
+            <SessionsView
+              showBlockWizard={showBlockWizard}
+              setShowBlockWizard={setShowBlockWizard}
+              blockWizard={blockWizard}
+              setBlockWizard={setBlockWizard}
+              updateSlot={updateSlot}
+              addSlot={addSlot}
+              removeSlot={removeSlot}
+              updateTeam={updateTeam}
+              updateGame={updateGame}
+              createBlock={createBlock}
+              creatingBlock={creatingBlock}
+              blockMsg={blockMsg}
+              sessDateFilter={sessDateFilter}
+              setSessDateFilter={setSessDateFilter}
+              uniqueDates={uniqueDates}
+              ageGroups={ageGroups}
+              ageGroupFilter={ageGroupFilter}
+              setAgeGroupFilter={setAgeGroupFilter}
+              wizardAgeGroupId={wizardAgeGroupId}
+              setWizardAgeGroupId={setWizardAgeGroupId}
+              sessLoading={sessLoading}
+              filteredSessions={filteredSessions}
+              sessionScorers={sessionScorers}
+              users={users}
+              onSaveSession={patchSession}
+              updateStatus={updateStatus}
+              removeSession={removeSession}
+              assigningTo={assigningTo}
+              setAssigningTo={setAssigningTo}
+              assignUserId={assignUserId}
+              setAssignUserId={setAssignUserId}
+              assignScorer={assignScorer}
+              unassignScorer={unassignScorer}
+              onChangeAssignment={changeBlockAssignment}
+            />
           )}
 
           {!loading && route.view === 'sessionGroup' && activeGroup && (
@@ -763,6 +809,23 @@ export default function Admin() {
                 const r = await api.events();
                 setEvents(r.events);
               }}
+              allSessions={allSessions}
+              sessLoading={sessLoading}
+              ageGroups={ageGroups}
+              showBlockWizard={showBlockWizard}
+              setShowBlockWizard={setShowBlockWizard}
+              blockWizard={blockWizard}
+              setBlockWizard={setBlockWizard}
+              updateSlot={updateSlot}
+              addSlot={addSlot}
+              removeSlot={removeSlot}
+              updateTeam={updateTeam}
+              updateGame={updateGame}
+              createBlock={createBlock}
+              creatingBlock={creatingBlock}
+              blockMsg={blockMsg}
+              wizardAgeGroupId={wizardAgeGroupId}
+              setWizardAgeGroupId={setWizardAgeGroupId}
             />
           )}
 

@@ -328,12 +328,27 @@ export function BlockWizardPanel({
   creatingBlock,
   blockMsg,
   onCancel,
+  ageGroups,
+  wizardAgeGroupId,
+  setWizardAgeGroupId,
 }) {
   const bw = blockWizard;
 
   return (
     <div style={{ ...A.card, borderColor: 'var(--blue)', borderWidth: 2, marginBottom: 16 }}>
       <div style={A.wizardTitle}>⚙ Session Block Setup</div>
+
+      {ageGroups?.length > 0 && (
+        <div style={A.formRow}>
+          <div style={{ flex: 1 }}>
+            <label style={A.fieldLabel}>Age Group <span style={{ color: 'var(--red-txt)' }}>*</span></label>
+            <select value={wizardAgeGroupId} onChange={(e) => setWizardAgeGroupId(e.target.value)} style={A.selectInput}>
+              <option value="">Select age group…</option>
+              {ageGroups.map((g) => <option key={g.id} value={String(g.id)}>{g.name}</option>)}
+            </select>
+          </div>
+        </div>
+      )}
 
       <div style={A.formRow}>
         <div style={{ flex: 2 }}>
@@ -547,7 +562,7 @@ export function BlockWizardPanel({
       {blockMsg && <div style={A.errorBox}>{blockMsg}</div>}
 
       <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-        <button onClick={createBlock} disabled={creatingBlock || !bw.date} style={A.saveBtn}>
+        <button onClick={createBlock} disabled={creatingBlock || !bw.date || (ageGroups?.length > 0 && !wizardAgeGroupId)} style={A.saveBtn}>
           {creatingBlock ? 'Creating…' : `Create ${bw.blockType === 'game' ? 'Game' : 'Skills'} Block`}
         </button>
         <button onClick={onCancel} style={A.ghostBtn}>Cancel</button>
