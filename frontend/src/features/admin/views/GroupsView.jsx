@@ -394,7 +394,7 @@ export function GroupDetailView({
               <div style={{ display: 'flex', gap: 20, marginBottom: 10 }}>
                 {[
                   { label: 'Valid', val: importSummary.valid, color: 'var(--green-txt)' },
-                  { label: 'Skip', val: importSummary.skipped, color: 'var(--amber-txt)' },
+                  { label: 'Warnings', val: importSummary.warnings, color: 'var(--amber-txt)' },
                   { label: 'Errors', val: importSummary.errors, color: 'var(--red-txt)' },
                 ].map(({ label, val, color }) => (
                   <div key={label} style={{ textAlign: 'center' }}>
@@ -464,15 +464,24 @@ export function GroupDetailView({
           <div style={A.playerTableHdr}>
             <span style={{ width: 50 }}>#</span>
             <span style={{ flex: 1 }}>Name</span>
+            <span style={{ width: 44, textAlign: 'right' }}>Born</span>
             <span style={{ width: 32 }} />
           </div>
-          {players.map((p) => (
-            <div key={p.id} style={A.playerRow}>
-              <span style={A.pJersey}>#{p.jersey_number}</span>
-              <span style={A.pName}>{p.first_name} {p.last_name}</span>
-              <button onClick={() => removePlayer(p.id)} style={{ ...A.iconBtn, color: 'var(--red-txt)' }} title="Remove">×</button>
-            </div>
-          ))}
+          {players.map((p) => {
+            const born = p.date_of_birth
+              ? new Date(p.date_of_birth + 'T12:00:00').getFullYear()
+              : (p.birth_year ?? null);
+            return (
+              <div key={p.id} style={A.playerRow}>
+                <span style={A.pJersey}>#{p.jersey_number}</span>
+                <span style={A.pName}>{p.first_name} {p.last_name}</span>
+                <span style={{ width: 44, textAlign: 'right', fontSize: 12, color: 'var(--text3)', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
+                  {born ?? '—'}
+                </span>
+                <button onClick={() => removePlayer(p.id)} style={{ ...A.iconBtn, color: 'var(--red-txt)' }} title="Remove">×</button>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

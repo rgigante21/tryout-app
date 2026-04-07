@@ -244,20 +244,8 @@ export default function EventsView({
   setWizardAgeGroupId,
 }) {
   const now = new Date();
-  const [calYear, setCalYear] = useState(() => {
-    if (activeEvent?.start_date) {
-      const d = new Date(`${String(activeEvent.start_date).slice(0, 10)}T12:00:00`);
-      return d.getFullYear();
-    }
-    return now.getFullYear();
-  });
-  const [calMonth, setCalMonth] = useState(() => {
-    if (activeEvent?.start_date) {
-      const d = new Date(`${String(activeEvent.start_date).slice(0, 10)}T12:00:00`);
-      return d.getMonth();
-    }
-    return now.getMonth();
-  });
+  const [calYear, setCalYear] = useState(now.getFullYear());
+  const [calMonth, setCalMonth] = useState(now.getMonth());
   const [selectedDate, setSelectedDate] = useState(null);
 
   const hasAnything = activeEvent || events.filter((e) => e.archived).length > 0;

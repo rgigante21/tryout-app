@@ -184,11 +184,6 @@ export default function OverviewView({
   openGroup,
   openRankings,
 }) {
-  const totalPlayers  = dashboard.reduce((s, d) => s + (d.total_players   || 0), 0);
-  const totalSessions = dashboard.reduce((s, d) => s + (d.total_sessions  || 0), 0);
-  const totalScores   = dashboard.reduce((s, d) => s + (d.total_scores    || 0), 0);
-  const activeCoaches = users.filter((u) => u.role === 'scorer' || u.role === 'coordinator').length;
-
   const activeSessions  = todaySessions.filter((s) => s.status === 'active');
   const otherSessions   = todaySessions.filter((s) => s.status !== 'active');
 
@@ -198,21 +193,6 @@ export default function OverviewView({
 
   return (
     <>
-      {/* ── Metric cards ───────────────────────────────────────── */}
-      <div style={A.metricGrid}>
-        {[
-          { label: 'Total Players',   val: totalPlayers,  accent: '#6B1E2E' },
-          { label: 'Sessions',        val: totalSessions, accent: '#1A4B8B' },
-          { label: 'Scores Entered',  val: totalScores,   accent: '#6B1E2E' },
-          { label: 'Coaches Active',  val: activeCoaches, accent: '#145A3C' },
-        ].map(({ label, val, accent }) => (
-          <div key={label} style={{ ...A.metricCard, borderTop: `3px solid ${accent}` }}>
-            <div style={{ ...A.metricVal, color: accent }}><CountUp end={val} /></div>
-            <div style={A.metricLabel}>{label}</div>
-          </div>
-        ))}
-      </div>
-
       {/* ── Live Now ───────────────────────────────────────────── */}
       {!todayLoading && activeSessions.length > 0 && (
         <div style={{ marginBottom: 28 }}>

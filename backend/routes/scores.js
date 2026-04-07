@@ -136,6 +136,10 @@ router.get('/dashboard',
   authMiddleware, requireRole('admin', 'coordinator'),
   async (req, res) => {
     try {
+      const { eventId } = req.query;
+      const params = [];
+      const eventFilter = eventId ? (params.push(eventId), `AND s.event_id = $${params.length}`) : '';
+      const playerEventFilter = eventId ? `AND p.event_id = $1` : '';
       const result = await pool.query(`
         SELECT
           ag.name       AS age_group,
@@ -147,13 +151,13 @@ router.get('/dashboard',
           COUNT(DISTINCT sc.id)   AS total_scores,
           COUNT(DISTINCT ss.user_id) AS total_scorers
         FROM age_groups ag
-        LEFT JOIN sessions s ON s.age_group_id = ag.id
-        LEFT JOIN players p ON p.age_group_id = ag.id
+        LEFT JOIN sessions s ON s.age_group_id = ag.id ${eventFilter}
+        LEFT JOIN players p ON p.age_group_id = ag.id ${playerEventFilter}
         LEFT JOIN scores sc ON sc.session_id = s.id
         LEFT JOIN session_scorers ss ON ss.session_id = s.id
         GROUP BY ag.id, ag.name, ag.code, ag.sort_order
         ORDER BY ag.sort_order
-      `);
+      `, params);
       res.json({ dashboard: result.rows });
     } catch (err) {
       console.error('Dashboard error:', err);

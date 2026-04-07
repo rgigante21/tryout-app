@@ -198,7 +198,7 @@ router.post('/players/bulk', ...guard, async (req, res) => {
   if (!Array.isArray(players) || !ageGroupId || !eventId) {
     return res.status(400).json({ error: 'players, ageGroupId, eventId required' });
   }
-  const added = [], skipped = [], errors = [];
+  const added = [], errors = [];
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -215,12 +215,12 @@ router.post('/players/bulk', ...guard, async (req, res) => {
         added.push(r.rows[0]);
         await assignPlayerToSessions(client, r.rows[0].id, ageGroupId, eventId);
       } catch (e) {
-        if (e.code === '23505') skipped.push({ ...p, reason: 'Jersey # already used' });
+        if (e.code === '23505') errors.push({ ...p, reason: 'external_id conflict (concurrent import)' });
         else errors.push({ ...p, reason: e.message });
       }
     }
     await client.query('COMMIT');
-    res.json({ added, skipped, errors });
+    res.json({ added, errors });
   } catch (err) {
     await client.query('ROLLBACK');
     res.status(500).json({ error: 'Server error' });

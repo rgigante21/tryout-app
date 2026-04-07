@@ -346,15 +346,40 @@ export default function Score() {
       </div>
 
       <div style={styles.grid}>
-        {players.map(p => (
-          <button
-            key={p.id}
-            onClick={() => openPlayer(p)}
-            style={btnStyle(btnState(p))}
-          >
-            {p.jersey_number}
-          </button>
-        ))}
+        {(() => {
+          const jerseyCount = {};
+          players.forEach(p => {
+            jerseyCount[p.jersey_number] = (jerseyCount[p.jersey_number] || 0) + 1;
+          });
+          const dupeJerseys = new Set(
+            Object.entries(jerseyCount)
+              .filter(([, count]) => count > 1)
+              .map(([num]) => Number(num))
+          );
+
+          return players.map(p => {
+            const isDupe = dupeJerseys.has(p.jersey_number);
+            return (
+              <button
+                key={p.id}
+                onClick={() => openPlayer(p)}
+                style={{
+                  ...btnStyle(btnState(p)),
+                  ...(isDupe ? styles.numBtnDupe : {}),
+                }}
+              >
+                {isDupe ? (
+                  <>
+                    <span style={styles.numBtnJersey}>{p.jersey_number}</span>
+                    <span style={styles.numBtnName}>{p.last_name.slice(0, 4)}</span>
+                  </>
+                ) : (
+                  p.jersey_number
+                )}
+              </button>
+            );
+          });
+        })()}
       </div>
     </div>
   );
@@ -409,6 +434,9 @@ const styles = {
   },
   numComplete: { background: 'var(--green-bg)',  border: '1px solid var(--green)',  color: 'var(--green-txt)'  },
   numPartial:  { background: 'var(--amber-bg)',  border: '1px solid var(--amber)',  color: 'var(--amber-txt)'  },
+  numBtnDupe:   { flexDirection: 'column', gap: 1 },
+  numBtnJersey: { fontSize: '15px', fontWeight: 700, lineHeight: 1 },
+  numBtnName:   { fontSize: '9px', fontWeight: 600, letterSpacing: '0.03em', textTransform: 'uppercase', opacity: 0.8, lineHeight: 1 },
 
   playerBadge: { background: 'var(--gold-bg)', border: '1px solid var(--gold-dark)', borderRadius: 'var(--radius)', padding: '14px 16px', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '14px' },
   playerNum:   { fontSize: '40px', fontWeight: 700, color: 'var(--gold)', lineHeight: 1, minWidth: 60 },

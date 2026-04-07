@@ -56,7 +56,7 @@ export const api = {
   // Scores
   submitScore: (payload)             => request('POST', '/scores', payload),
   rankings:    (ageGroupId, eventId) => request('GET', `/scores/rankings/${ageGroupId}/${eventId}`),
-  dashboard:   ()                    => request('GET', '/scores/dashboard'),
+  dashboard:   (eventId)             => request('GET', eventId ? `/scores/dashboard?eventId=${eventId}` : '/scores/dashboard'),
 
   // Admin — users
   users:        ()                            => request('GET',    '/admin/users'),

@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  security-and-test:
+    name: Security audit & API tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: tryoutapp
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Dependency audit ──────────────────────────────────────────────────────
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Run npm audit (fail on high/critical)
+        working-directory: backend
+        run: npm audit --audit-level=high
+        continue-on-error: true   # audit as informational until baseline is clean
+
+      # ── Database schema ───────────────────────────────────────────────────────
+      - name: Apply database schema
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -d tryoutapp -f postgres/init.sql
+
+      # ── API security tests ────────────────────────────────────────────────────
+      - name: Run API security tests
+        working-directory: backend
+        env:
+          DB_HOST: localhost
+          DB_USER: postgres
+          DB_PASS: postgres
+          DB_NAME: tryoutapp
+          DB_PORT: 5432
+          JWT_SECRET: ci-test-secret-minimum-32-chars-xxxxxxxxxxx
+          NODE_ENV: test
+        run: npm test
+
+      # ── Frontend build check ──────────────────────────────────────────────────
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Frontend build
+        working-directory: frontend
+        env:
+          VITE_API_TARGET: http://localhost:4000
+        run: npm run build

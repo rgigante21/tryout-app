@@ -119,25 +119,33 @@ export default function Admin() {
   }, [location.pathname, navigate]);
 
   useEffect(() => {
-    Promise.all([api.ageGroups(), api.events(), api.users(), api.dashboard()])
-      .then(([ag, ev, us, dash]) => {
+    let ignore = false;
+    Promise.all([api.ageGroups(), api.events(), api.users()])
+      .then(([ag, ev, us]) => {
+        if (ignore) return;
         setAgeGroups(ag.ageGroups);
         setEvents(ev.events);
         setUsers(us.users);
-        setDashboard(dash.dashboard);
+        const active = (ev.events || []).find((e) => !e.archived) || null;
+        return api.dashboard(active?.id);
       })
+      .then((dash) => { if (!ignore && dash) setDashboard(dash.dashboard); })
       .catch((err) => {
+        if (ignore) return;
         handleAuthError(err);
         console.error(err);
       })
-      .finally(() => setLoading(false));
+      .finally(() => { if (!ignore) setLoading(false); });
+    return () => { ignore = true; };
   }, []);
 
   useEffect(() => {
     if (!activeEvent || route.view !== 'overview') return;
+    let ignore = false;
     setTodayLoading(true);
     api.allSessions(null, activeEvent.id, todayDate)
       .then(async (r) => {
+        if (ignore) return;
         const list = (r.sessions || []).filter((s) => String(s.session_date).slice(0, 10) === todayDate);
         setTodaySessions(list);
         if (list.length) {
@@ -148,15 +156,18 @@ export default function Admin() {
               return [s.id, { checked: players.filter((p) => p.checked_in).length, total: players.length }];
             }).catch(() => [s.id, { checked: 0, total: s.player_count || 0 }]))),
           ]);
-          setTodayScorers(Object.fromEntries(scorerPairs));
-          setTodayCheckIns(Object.fromEntries(playerPairs));
+          if (!ignore) {
+            setTodayScorers(Object.fromEntries(scorerPairs));
+            setTodayCheckIns(Object.fromEntries(playerPairs));
+          }
         } else {
           setTodayScorers({});
           setTodayCheckIns({});
         }
       })
-      .catch(() => { setTodaySessions([]); setTodayScorers({}); setTodayCheckIns({}); })
-      .finally(() => setTodayLoading(false));
+      .catch(() => { if (!ignore) { setTodaySessions([]); setTodayScorers({}); setTodayCheckIns({}); } })
+      .finally(() => { if (!ignore) setTodayLoading(false); });
+    return () => { ignore = true; };
   }, [activeEvent, route.view, todayDate]);
 
   const loadAllSessions = useCallback(async (ageGroupId = null) => {
@@ -212,9 +223,11 @@ export default function Admin() {
 
   useEffect(() => {
     if (route.view !== 'rankings' || !activeGroup || !activeEvent) return;
+    let ignore = false;
     api.rankings(activeGroup.id, activeEvent.id)
-      .then((data) => setRankings(data.rankings || []))
-      .catch(console.error);
+      .then((data) => { if (!ignore) setRankings(data.rankings || []); })
+      .catch((err) => { if (!ignore) console.error(err); });
+    return () => { ignore = true; };
   }, [activeEvent, activeGroup, route.view]);
 
   const goTo = useCallback((path) => {

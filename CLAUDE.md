@@ -33,7 +33,37 @@ cd backend && npm run dev   # uses nodemon
 docker compose logs backend -f
 ```
 
-No test suite or linter is configured.
+**Connect to database:**
+```bash
+docker exec -it tryout_db psql -U postgres -d tryoutapp
+```
+
+**Apply a migration to a running DB:**
+```bash
+docker exec -i tryout_db psql -U postgres -d tryoutapp \
+  < postgres/migrations/<file>.sql
+```
+
+**Run the API security test suite:**
+```bash
+DB_HOST=localhost DB_USER=postgres DB_PASS=postgres DB_NAME=tryoutapp \
+  JWT_SECRET=test-secret-minimum-32-chars-xxxxxxxxxxx npm test
+```
+Tests live in `backend/tests/` and require a live Postgres DB. Use `moduleNameMapper` in Jest config to alias `bcrypt` → `bcryptjs` (pure JS) so tests run on macOS without the Docker-compiled Linux native binary.
+
+## Database Credentials
+
+The Postgres superuser is `postgres` (no separate `tryout` role). Database name is `tryoutapp`. Always use `-U postgres -d tryoutapp` when connecting via `docker exec`.
+
+## Migrations
+
+Applied in order. Fresh installs pick up everything via `postgres/init.sql` automatically.
+
+| File | Status | What it does |
+|---|---|---|
+| `001_production_readiness.sql` | ✅ Applied | audit_log, attendance_status, scoring_complete/finalized session statuses |
+| `002_player_shot_and_import_fields.sql` | ✅ Applied | shot, date_of_birth, external_id, gender on players; partial unique index on external_id |
+| `003_drop_jersey_unique_constraint.sql` | ✅ Applied | Drops jersey uniqueness constraint; adds non-unique index |
 
 ## Default Credentials
 
