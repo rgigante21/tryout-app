@@ -296,10 +296,40 @@ function SessionTile({
 
 export function SessionsIndexView({ ageGroups, groupStats, openSessionGroup }) {
   return (
-    <>
-      <div style={A.sectionHdr}>
-        <span style={A.sectionLabel}>Select an Age Group</span>
+    <div style={A.stackedSection}>
+      <div>
+        <div style={A.sectionLabel}>Session Planning</div>
+        <div style={A.sectionIntro}>
+          Pick an age group to manage its session blocks, scorer assignments, and day-by-day tryout flow.
+        </div>
       </div>
+
+      <div style={A.statStrip}>
+        {[
+          {
+            label: 'Age Groups',
+            value: ageGroups.length,
+          },
+          {
+            label: 'Total Sessions',
+            value: ageGroups.reduce((sum, g) => sum + (groupStats(g.code).total_sessions || 0), 0),
+          },
+          {
+            label: 'Completed',
+            value: ageGroups.reduce((sum, g) => sum + (groupStats(g.code).complete_sessions || 0), 0),
+          },
+          {
+            label: 'Scores',
+            value: ageGroups.reduce((sum, g) => sum + (groupStats(g.code).total_scores || 0), 0),
+          },
+        ].map(({ label, value }) => (
+          <div key={label} style={A.statTile}>
+            <div style={A.statTileValue}>{value}</div>
+            <div style={A.statTileLabel}>{label}</div>
+          </div>
+        ))}
+      </div>
+
       <div style={A.ageGroupGrid}>
         {ageGroups.map((g) => {
           const stats = groupStats(g.code);
@@ -323,13 +353,13 @@ export function SessionsIndexView({ ageGroups, groupStats, openSessionGroup }) {
                 <div style={{ ...A.progressFill, width: `${pct}%`, background: pct === 100 ? 'var(--green)' : 'var(--maroon)' }} />
               </div>
               <div style={{ marginTop: 10 }}>
-                <span style={A.agLink}>View Sessions →</span>
+                <span style={A.agLink}>Open session board →</span>
               </div>
             </div>
           );
         })}
       </div>
-    </>
+    </div>
   );
 }
 
@@ -347,8 +377,17 @@ export default function SessionsView({
   assigningTo, setAssigningTo, assignUserId, setAssignUserId,
   assignScorer, unassignScorer, onChangeAssignment,
 }) {
+  const allSessionCount = filteredSessions.length;
+
   return (
-    <>
+    <div style={A.stackedSection}>
+      <div>
+        <div style={A.sectionLabel}>Session Board</div>
+        <div style={A.sectionIntro}>
+          Filter by age group or date, then open a session to update status, assign scorers, and review players without leaving the page.
+        </div>
+      </div>
+
       {showBlockWizard && (
         <BlockWizardPanel
           blockWizard={blockWizard} setBlockWizard={setBlockWizard}
@@ -362,49 +401,81 @@ export default function SessionsView({
         />
       )}
 
-      {ageGroups?.length > 0 && (
-        <div style={A.dateFilterRow}>
-          <button onClick={() => setAgeGroupFilter('all')} style={{ ...A.dateChip, ...(ageGroupFilter === 'all' ? A.dateChipActive : {}) }}>
-            All
-          </button>
-          {ageGroups.map((g) => (
-            <button key={g.id} onClick={() => setAgeGroupFilter(String(g.id))} style={{ ...A.dateChip, ...(ageGroupFilter === String(g.id) ? A.dateChipActive : {}) }}>
-              {g.name}
-            </button>
-          ))}
+      <div style={A.splitLayout}>
+        <aside style={A.sidePanel}>
+          <div style={A.sidePanelTitle}>Filters</div>
+          <div style={A.sidePanelText}>
+            Keep the board focused on one group or one tryout day at a time.
+          </div>
+
+          {ageGroups?.length > 0 && (
+            <div style={{ marginTop: 16 }}>
+              <div style={{ ...A.fieldLabel, marginBottom: 8 }}>Age group</div>
+              <div style={A.quickNavList}>
+                <button onClick={() => setAgeGroupFilter('all')} style={{ ...A.quickNavBtn, ...(ageGroupFilter === 'all' ? { borderColor: 'var(--gold-dark)', background: 'var(--gold-bg)' } : {}) }}>
+                  <span>All age groups</span>
+                  <span style={A.quickNavMeta}>{ageGroups.length}</span>
+                </button>
+                {ageGroups.map((g) => (
+                  <button key={g.id} onClick={() => setAgeGroupFilter(String(g.id))} style={{ ...A.quickNavBtn, ...(ageGroupFilter === String(g.id) ? { borderColor: 'var(--gold-dark)', background: 'var(--gold-bg)' } : {}) }}>
+                    <span>{g.name}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div style={{ marginTop: 18 }}>
+            <div style={{ ...A.fieldLabel, marginBottom: 8 }}>Session date</div>
+            <div style={A.quickNavList}>
+              <button onClick={() => setSessDateFilter('all')} style={{ ...A.quickNavBtn, ...(sessDateFilter === 'all' ? { borderColor: 'var(--gold-dark)', background: 'var(--gold-bg)' } : {}) }}>
+                <span>All dates</span>
+                <span style={A.quickNavMeta}>{uniqueDates.length}</span>
+              </button>
+              {uniqueDates.map((d) => (
+                <button key={d} onClick={() => setSessDateFilter(d)} style={{ ...A.quickNavBtn, ...(sessDateFilter === d ? { borderColor: 'var(--gold-dark)', background: 'var(--gold-bg)' } : {}) }}>
+                  <span>{fmt.dateMed(d)}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </aside>
+
+        <div style={A.contentStack}>
+          <div style={A.statStrip}>
+            {[
+              { label: 'Showing', value: allSessionCount },
+              { label: 'Age Groups', value: ageGroups?.length || 0 },
+              { label: 'Dates', value: uniqueDates.length },
+            ].map(({ label, value }) => (
+              <div key={label} style={A.statTile}>
+                <div style={A.statTileValue}>{value}</div>
+                <div style={A.statTileLabel}>{label}</div>
+              </div>
+            ))}
+          </div>
+
+          {sessLoading && <p style={A.muted}>Loading sessions…</p>}
+          {!sessLoading && filteredSessions.length === 0 && (
+            <div style={A.emptyCard}>No sessions match these filters yet. Use <strong>+ Session Block</strong> to create sessions.</div>
+          )}
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {!sessLoading && filteredSessions.map((sess) => (
+              <SessionTile
+                key={sess.id} sess={sess}
+                scorers={sessionScorers[sess.id] || []} users={users}
+                onSaveSession={onSaveSession}
+                updateStatus={updateStatus} removeSession={removeSession}
+                assigningTo={assigningTo} setAssigningTo={setAssigningTo}
+                assignUserId={assignUserId} setAssignUserId={setAssignUserId}
+                assignScorer={assignScorer} unassignScorer={unassignScorer}
+                onChangeAssignment={onChangeAssignment}
+              />
+            ))}
+          </div>
         </div>
-      )}
-
-      <div style={A.dateFilterRow}>
-        <button onClick={() => setSessDateFilter('all')} style={{ ...A.dateChip, ...(sessDateFilter === 'all' ? A.dateChipActive : {}) }}>
-          All Dates
-        </button>
-        {uniqueDates.map((d) => (
-          <button key={d} onClick={() => setSessDateFilter(d)} style={{ ...A.dateChip, ...(sessDateFilter === d ? A.dateChipActive : {}) }}>
-            {fmt.dateMed(d)}
-          </button>
-        ))}
       </div>
-
-      {sessLoading && <p style={A.muted}>Loading sessions…</p>}
-      {!sessLoading && filteredSessions.length === 0 && (
-        <div style={A.emptyCard}>No sessions yet. Use <strong>+ Session Block</strong> to create sessions.</div>
-      )}
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {!sessLoading && filteredSessions.map((sess) => (
-          <SessionTile
-            key={sess.id} sess={sess}
-            scorers={sessionScorers[sess.id] || []} users={users}
-            onSaveSession={onSaveSession}
-            updateStatus={updateStatus} removeSession={removeSession}
-            assigningTo={assigningTo} setAssigningTo={setAssigningTo}
-            assignUserId={assignUserId} setAssignUserId={setAssignUserId}
-            assignScorer={assignScorer} unassignScorer={unassignScorer}
-            onChangeAssignment={onChangeAssignment}
-          />
-        ))}
-      </div>
-    </>
+    </div>
   );
 }

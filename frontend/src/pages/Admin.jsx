@@ -106,10 +106,14 @@ export default function Admin() {
   const [eventStats, setEventStats] = useState(null);
   const [viewingEventId, setViewingEventId] = useState(null);
   const [eventMsg, setEventMsg] = useState({ type: '', text: '' });
+  const [selectedEventId, setSelectedEventId] = useState('');
 
   const [rankings, setRankings] = useState([]);
 
-  const activeEvent = events.find((e) => !e.archived) || null;
+  const availableEvents = events.filter((e) => !e.archived);
+  const activeEvent = availableEvents.find((e) => String(e.id) === String(selectedEventId))
+    || availableEvents[0]
+    || null;
   const activeGroup = ageGroups.find((group) => group.code.toLowerCase() === (route.groupCode || '').toLowerCase()) || null;
 
   useEffect(() => {
@@ -126,10 +130,7 @@ export default function Admin() {
         setAgeGroups(ag.ageGroups);
         setEvents(ev.events);
         setUsers(us.users);
-        const active = (ev.events || []).find((e) => !e.archived) || null;
-        return api.dashboard(active?.id);
       })
-      .then((dash) => { if (!ignore && dash) setDashboard(dash.dashboard); })
       .catch((err) => {
         if (ignore) return;
         handleAuthError(err);
@@ -138,6 +139,29 @@ export default function Admin() {
       .finally(() => { if (!ignore) setLoading(false); });
     return () => { ignore = true; };
   }, []);
+
+  useEffect(() => {
+    if (!availableEvents.length) {
+      if (selectedEventId) setSelectedEventId('');
+      return;
+    }
+    const selectionStillExists = availableEvents.some((e) => String(e.id) === String(selectedEventId));
+    if (!selectionStillExists) {
+      setSelectedEventId(String(availableEvents[0].id));
+    }
+  }, [availableEvents, selectedEventId]);
+
+  useEffect(() => {
+    let ignore = false;
+    api.dashboard(activeEvent?.id)
+      .then((dash) => { if (!ignore) setDashboard(dash.dashboard || []); })
+      .catch((err) => {
+        if (ignore) return;
+        handleAuthError(err);
+        console.error(err);
+      });
+    return () => { ignore = true; };
+  }, [activeEvent, handleAuthError]);
 
   useEffect(() => {
     if (!activeEvent || route.view !== 'overview') return;
@@ -689,6 +713,20 @@ export default function Admin() {
             <h2 style={A.pageTitle}>{pageTitle}</h2>
           </div>
           <div style={A.topbarRight}>
+            {availableEvents.length > 1 && (
+              <select
+                value={activeEvent ? String(activeEvent.id) : ''}
+                onChange={(e) => setSelectedEventId(e.target.value)}
+                style={A.toolbarSelect}
+                aria-label="Selected event"
+              >
+                {availableEvents.map((event) => (
+                  <option key={event.id} value={event.id}>
+                    {event.name} ({event.season})
+                  </option>
+                ))}
+              </select>
+            )}
             {activeEvent && <span style={A.eventPill}>{activeEvent.name}</span>}
             {(route.view === 'sessionGroup' || route.view === 'sessions') && (
               <button onClick={() => setShowBlockWizard((v) => !v)} style={showBlockWizard ? A.ghostBtn : A.primaryBtn}>
@@ -817,6 +855,7 @@ export default function Admin() {
               viewingEventId={viewingEventId}
               loadEventStats={loadEventStats}
               eventMsg={eventMsg}
+              setSelectedEventId={setSelectedEventId}
               restoreEvent={async (id) => {
                 await api.archiveEvent(id, false);
                 const r = await api.events();

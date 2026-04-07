@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { A } from '../styles';
 import { fmt, BlockWizardPanel, STATUS_META } from '../shared';
 
@@ -50,25 +50,27 @@ function EventCalendar({ activeEvent, allSessions, selectedDate, setSelectedDate
 
   return (
     <div>
-      {/* Month nav */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
-        <button onClick={prevMonth} style={{ ...A.ghostBtn, padding: '4px 10px', fontSize: 14 }}>‹</button>
-        <div style={{ flex: 1, textAlign: 'center', fontWeight: 700, fontSize: 15, color: 'var(--text)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+        <button onClick={prevMonth} style={{ ...A.ghostBtn, minWidth: 40, padding: 0, fontSize: 14 }}>‹</button>
+        <div style={{ flex: 1, textAlign: 'center' }}>
+          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--text3)', marginBottom: 2 }}>
+            Calendar
+          </div>
+          <div style={{ fontWeight: 700, fontSize: 16, color: 'var(--text)' }}>
           {MONTH_NAMES[calMonth]} {calYear}
+          </div>
         </div>
-        <button onClick={nextMonth} style={{ ...A.ghostBtn, padding: '4px 10px', fontSize: 14 }}>›</button>
+        <button onClick={nextMonth} style={{ ...A.ghostBtn, minWidth: 40, padding: 0, fontSize: 14 }}>›</button>
       </div>
 
-      {/* Day-of-week header */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 1, marginBottom: 1 }}>
         {DAY_HEADERS.map((h) => (
-          <div key={h} style={{ textAlign: 'center', fontSize: 11, fontWeight: 600, color: 'var(--text3)', padding: '4px 0', background: 'var(--bg3)' }}>
+          <div key={h} style={{ textAlign: 'center', fontSize: 11, fontWeight: 700, color: 'var(--text3)', padding: '7px 0', background: 'var(--bg3)' }}>
             {h}
           </div>
         ))}
       </div>
 
-      {/* Calendar cells */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 1, background: 'var(--border)' }}>
         {cells.map((day, idx) => {
           if (!day) {
@@ -89,8 +91,8 @@ function EventCalendar({ activeEvent, allSessions, selectedDate, setSelectedDate
               onClick={() => setSelectedDate(isSelected ? null : dateStr)}
               style={{
                 background: isSelected ? 'var(--maroon-bg)' : isToday ? 'var(--blue-bg)' : 'var(--bg)',
-                minHeight: 72,
-                padding: 6,
+                minHeight: 78,
+                padding: 8,
                 cursor: 'pointer',
                 border: isSelected ? '2px solid var(--maroon)' : '2px solid transparent',
                 position: 'relative',
@@ -154,14 +156,17 @@ function DayDetail({ selectedDate, allSessions, onAddBlock }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14, gap: 12, flexWrap: 'wrap' }}>
         <div>
+          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text3)', marginBottom: 4 }}>
+            Day Plan
+          </div>
           <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>{dateLabel}</div>
           <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
             {daySessions.length === 0 ? 'No sessions' : `${daySessions.length} session${daySessions.length > 1 ? 's' : ''}`}
           </div>
         </div>
-        <button onClick={() => onAddBlock(selectedDate)} style={{ ...A.primaryBtn, fontSize: 12, padding: '5px 10px' }}>
+        <button onClick={() => onAddBlock(selectedDate)} style={A.primaryBtn}>
           + Session Block
         </button>
       </div>
@@ -176,8 +181,8 @@ function DayDetail({ selectedDate, allSessions, onAddBlock }) {
             const sm = STATUS_META[sess.status] || STATUS_META.pending;
             const isGame = sess.session_type === 'game';
             return (
-              <div key={sess.id} style={{ ...A.card, padding: '10px 12px', marginBottom: 0 }}>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
+              <div key={sess.id} style={{ ...A.card, padding: '14px 16px', marginBottom: 0 }}>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
                   <span style={{
                     fontSize: 11, borderRadius: 6, padding: '2px 7px', fontWeight: 600,
                     background: isGame ? 'var(--amber-bg)' : 'var(--blue-bg)',
@@ -195,8 +200,8 @@ function DayDetail({ selectedDate, allSessions, onAddBlock }) {
                     {sm.label}
                   </span>
                 </div>
-                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 2 }}>{sess.name}</div>
-                <div style={{ fontSize: 11, color: 'var(--text3)' }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>{sess.name}</div>
+                <div style={{ fontSize: 12, color: 'var(--text3)', lineHeight: 1.5 }}>
                   {sess.start_time ? fmt.time(sess.start_time) : 'No time set'}
                   {' · '}<strong>{sess.player_count || 0}</strong> players
                   {sess.last_name_start && sess.last_name_end ? ` · ${sess.last_name_start}–${sess.last_name_end}` : ''}
@@ -224,6 +229,7 @@ export default function EventsView({
   viewingEventId,
   loadEventStats,
   eventMsg,
+  setSelectedEventId,
   restoreEvent,
   allSessions = [],
   sessLoading,
@@ -248,12 +254,23 @@ export default function EventsView({
   const [calMonth, setCalMonth] = useState(now.getMonth());
   const [selectedDate, setSelectedDate] = useState(null);
 
-  const hasAnything = activeEvent || events.filter((e) => e.archived).length > 0;
+  const currentEvents = events.filter((e) => !e.archived);
+  const archivedEvents = events.filter((e) => e.archived);
+  const hasAnything = currentEvents.length > 0 || archivedEvents.length > 0;
 
   const handleAddBlock = (date) => {
     setBlockWizard((w) => ({ ...w, date }));
     setShowBlockWizard(true);
   };
+
+  useEffect(() => {
+    setSelectedDate(null);
+    if (!activeEvent?.start_date) return;
+    const start = new Date(`${String(activeEvent.start_date).slice(0, 10)}T12:00:00`);
+    if (Number.isNaN(start.getTime())) return;
+    setCalYear(start.getFullYear());
+    setCalMonth(start.getMonth());
+  }, [activeEvent]);
 
   return (
     <div>
@@ -273,7 +290,7 @@ export default function EventsView({
 
       {showCreateEvent && (
         <div style={{ ...A.card, marginBottom: 16 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>New Event</div>
+          <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 14, color: 'var(--text)' }}>New Event</div>
           <div style={A.formRow}>
             <div style={{ flex: 2 }}>
               <label style={A.fieldLabel}>Event name</label>
@@ -302,14 +319,63 @@ export default function EventsView({
         </div>
       )}
 
+      {currentEvents.length > 0 && (
+        <>
+          <div style={{ ...A.sectionLabel, marginBottom: 10 }}>Current Events</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
+            {currentEvents.map((ev) => {
+              const isSelected = activeEvent?.id === ev.id;
+              return (
+                <div
+                  key={ev.id}
+                  style={{
+                    ...A.card,
+                    marginBottom: 0,
+                    borderColor: isSelected ? 'var(--gold-dark)' : 'var(--border)',
+                    background: isSelected ? 'var(--gold-bg)' : '#fff',
+                    padding: '16px 18px',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
+                        {isSelected && (
+                          <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--gold-txt)' }}>
+                            Selected
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 4 }}>{ev.name}</div>
+                      <div style={{ fontSize: 13, color: 'var(--text3)', lineHeight: 1.5 }}>
+                        {ev.season} · {fmt.date(ev.start_date)} → {fmt.date(ev.end_date)}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginLeft: 'auto' }}>
+                      {!isSelected && (
+                        <button onClick={() => setSelectedEventId(String(ev.id))} style={A.primaryBtn}>
+                          Open
+                        </button>
+                      )}
+                      <button onClick={() => archiveEvent(ev.id)} style={{ ...A.ghostBtn, borderColor: 'var(--red)', color: 'var(--red-txt)' }}>
+                        Archive
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+
       {activeEvent && (
         <>
-          {/* Active event header */}
           <div style={{ ...A.card, borderColor: 'var(--gold-dark)', marginBottom: 12 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text3)', marginBottom: 4 }}>Planning Calendar</div>
                 <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 4 }}>{activeEvent.name}</div>
-                <div style={{ fontSize: 13, color: 'var(--text3)' }}>
+                <div style={{ fontSize: 13, color: 'var(--text3)', lineHeight: 1.5 }}>
                   {activeEvent.season} · {fmt.date(activeEvent.start_date)} → {fmt.date(activeEvent.end_date)}
                 </div>
               </div>
@@ -320,9 +386,8 @@ export default function EventsView({
           </div>
 
           {/* Calendar + day detail */}
-          <div style={{ display: 'flex', gap: 12, marginBottom: 16, alignItems: 'flex-start' }}>
-            {/* Calendar */}
-            <div style={{ ...A.card, flex: '0 0 auto', width: 'min(100%, 420px)', padding: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(320px, 420px) minmax(0, 1fr)', gap: 12, marginBottom: 16, alignItems: 'flex-start' }}>
+            <div style={{ ...A.card, marginBottom: 0, padding: 14 }}>
               <EventCalendar
                 activeEvent={activeEvent}
                 allSessions={allSessions}
@@ -338,8 +403,7 @@ export default function EventsView({
               )}
             </div>
 
-            {/* Day detail panel */}
-            <div style={{ ...A.card, flex: 1, minHeight: 340, padding: 14 }}>
+            <div style={{ ...A.card, marginBottom: 0, minHeight: 340, padding: 16 }}>
               <DayDetail
                 selectedDate={selectedDate}
                 allSessions={allSessions}
@@ -370,15 +434,15 @@ export default function EventsView({
         </>
       )}
 
-      {events.filter((e) => e.archived).length > 0 && (
+      {archivedEvents.length > 0 && (
         <>
           <div style={{ ...A.sectionLabel, marginTop: 20 }}>Archived Events</div>
-          {events.filter((e) => e.archived).map((ev) => (
+          {archivedEvents.map((ev) => (
             <div key={ev.id} style={{ ...A.card, marginBottom: 10 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <div style={{ minWidth: 0 }}>
                   <div style={{ fontSize: 15, fontWeight: 600 }}>{ev.name}</div>
-                  <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 2 }}>
+                  <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 2, lineHeight: 1.5 }}>
                     {ev.season} · Archived {fmt.date(ev.archived_at)}
                   </div>
                 </div>

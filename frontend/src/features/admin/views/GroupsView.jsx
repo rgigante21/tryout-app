@@ -183,9 +183,14 @@ export function GroupsIndexView({ ageGroups, groupStats, openGroup, onAddAgeGrou
   };
 
   return (
-    <>
+    <div style={A.stackedSection}>
       <div style={A.sectionHdr}>
-        <span style={A.sectionLabel}>Age Groups</span>
+        <div>
+          <div style={A.sectionLabel}>Age Groups</div>
+          <div style={A.sectionIntro}>
+            Keep rosters and session planning organized by age group so coordinators can move quickly between levels during tryouts.
+          </div>
+        </div>
         <button onClick={() => setShowAdd((v) => !v)} style={showAdd ? A.ghostBtn : A.primaryBtn}>
           {showAdd ? 'Cancel' : '+ New Age Group'}
         </button>
@@ -235,7 +240,7 @@ export function GroupsIndexView({ ageGroups, groupStats, openGroup, onAddAgeGrou
           );
         })}
       </div>
-    </>
+    </div>
   );
 }
 
@@ -291,10 +296,15 @@ export function GroupDetailView({
   clearImport,
 }) {
   return (
-    <div>
+    <div style={A.stackedSection}>
       <div style={A.sectionHdr}>
-        <span style={A.sectionLabel}>Sessions ({sessions.length})</span>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div>
+          <div style={A.sectionLabel}>Group Workspace</div>
+          <div style={A.sectionIntro}>
+            Add players, edit rosters, and create sessions for this age group from one place.
+          </div>
+        </div>
+        <div style={A.actionRow}>
           <button onClick={() => { setShowAddSession((v) => !v); setShowBlockWizard(false); }} style={A.ghostBtn}>
             {showAddSession ? 'Cancel' : '+ Single Session'}
           </button>
@@ -302,6 +312,19 @@ export function GroupDetailView({
             {showBlockWizard ? 'Cancel' : '+ Session Block'}
           </button>
         </div>
+      </div>
+
+      <div style={A.statStrip}>
+        {[
+          { label: 'Sessions', value: sessions.length },
+          { label: 'Players', value: players.length },
+          { label: 'Scorers', value: Object.values(sessionScorers).flat().length },
+        ].map(({ label, value }) => (
+          <div key={label} style={A.statTile}>
+            <div style={A.statTileValue}>{value}</div>
+            <div style={A.statTileLabel}>{label}</div>
+          </div>
+        ))}
       </div>
 
       {showBlockWizard && (
@@ -368,9 +391,9 @@ export function GroupDetailView({
         ))}
       </div>
 
-      <div style={{ ...A.sectionHdr, marginTop: 28 }}>
+      <div style={{ ...A.sectionHdr, marginTop: 8 }}>
         <span style={A.sectionLabel}>Players ({players.length})</span>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={A.actionRow}>
           <button onClick={() => { setShowImport((v) => !v); setShowAddPlayer(false); clearImport(); }} style={A.ghostBtn}>
             {showImport ? 'Cancel' : '↑ Import CSV'}
           </button>

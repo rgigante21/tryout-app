@@ -1,6 +1,11 @@
 export const ADMIN_CSS = `
   @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Nunito:wght@400;500;600;700&display=swap');
 
+  .admin-shell,
+  .admin-shell * {
+    box-sizing: border-box;
+  }
+
   .admin-shell {
     --bg:         #FAF8F5;
     --bg2:        #FFFFFF;
@@ -39,7 +44,14 @@ export const ADMIN_CSS = `
     background: #FFFFFF;
     border: 1px solid #D5CEC4;
     color: #1A1212;
+    min-height: 40px;
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 10px;
     font-weight: 500;
+    font-family: 'Nunito', sans-serif;
+    font-size: 14px;
+    line-height: 1.2;
   }
 
   .admin-shell input:focus,
@@ -50,6 +62,17 @@ export const ADMIN_CSS = `
   }
 
   .admin-shell input::placeholder { color: #B8ADA0; }
+
+  .admin-shell button,
+  .admin-shell select,
+  .admin-shell input,
+  .admin-shell textarea {
+    transition: border-color 0.16s ease, box-shadow 0.16s ease, background 0.16s ease, color 0.16s ease, transform 0.16s ease;
+  }
+
+  .admin-shell button:hover {
+    transform: translateY(-1px);
+  }
 
   .ag-card { transition: border-color 0.15s, box-shadow 0.15s; }
   .ag-card:hover { border-color: var(--gold) !important; box-shadow: 0 6px 20px rgba(107,30,46,0.08); }
@@ -157,29 +180,134 @@ export const A = {
   topbar: {
     background: '#FFFFFF',
     borderBottom: '1px solid var(--border)',
-    padding: '0 28px',
-    height: 58,
+    padding: '14px 28px',
+    minHeight: 72,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 16,
+    flexWrap: 'wrap',
     position: 'sticky',
     top: 0,
     zIndex: 10,
-    boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+    boxShadow: '0 4px 18px rgba(26,18,18,0.05)',
   },
-  topbarLeft: { display: 'flex', alignItems: 'center', gap: 12 },
-  topbarRight: { display: 'flex', alignItems: 'center', gap: 8 },
+  topbarLeft: { display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, flexWrap: 'wrap' },
+  topbarRight: { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' },
   pageTitle: { fontFamily: "'Barlow Condensed', sans-serif", fontSize: 24, fontWeight: 700, color: '#2D1F1F', letterSpacing: '0.03em' },
   backLink: { background: 'none', border: 'none', color: 'var(--maroon)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', padding: 0 },
-  eventPill: { fontSize: 11, fontWeight: 700, background: '#FDF6E3', border: '1.5px solid var(--gold-dark)', borderRadius: 20, padding: '5px 14px', color: '#6B1E2E' },
-  contentArea: { flex: 1, padding: '24px 28px 60px', overflowY: 'auto' },
+  toolbarSelect: {
+    minWidth: 240,
+    width: 'auto',
+    height: 40,
+    padding: '0 40px 0 12px',
+    borderRadius: 999,
+    border: '1px solid var(--border)',
+    background: '#fff',
+    color: 'var(--text)',
+    fontSize: 13,
+    fontWeight: 700,
+    outline: 'none',
+    fontFamily: 'inherit',
+  },
+  eventPill: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    minHeight: 40,
+    fontSize: 11,
+    fontWeight: 700,
+    background: '#FDF6E3',
+    border: '1.5px solid var(--gold-dark)',
+    borderRadius: 999,
+    padding: '0 14px',
+    color: '#6B1E2E',
+  },
+  contentArea: { flex: 1, padding: '28px 28px 72px', overflowY: 'auto' },
   muted: { fontSize: 13, color: 'var(--text3)', padding: '8px 0', fontWeight: 500 },
-  primaryBtn: { background: 'var(--maroon)', border: '1px solid var(--maroon-light)', borderRadius: 8, color: '#fff', fontSize: 13, fontWeight: 700, padding: '8px 16px', cursor: 'pointer', fontFamily: 'inherit', letterSpacing: '0.02em' },
-  ghostBtn: { background: '#fff', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text2)', fontSize: 13, fontWeight: 600, padding: '8px 14px', cursor: 'pointer', fontFamily: 'inherit' },
-  saveBtn: { padding: '9px 20px', background: 'var(--maroon)', border: '1px solid var(--maroon-light)', borderRadius: 8, color: '#fff', fontFamily: "'Barlow Condensed', sans-serif", fontSize: 17, fontWeight: 700, cursor: 'pointer', letterSpacing: '0.04em' },
-  iconBtn: { background: 'none', border: 'none', fontSize: 16, cursor: 'pointer', padding: '0 4px', color: 'var(--text3)', lineHeight: 1, fontFamily: 'inherit' },
+  primaryBtn: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 40,
+    padding: '0 16px',
+    background: 'var(--maroon)',
+    border: '1px solid var(--maroon-light)',
+    borderRadius: 10,
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: 700,
+    cursor: 'pointer',
+    fontFamily: 'inherit',
+    letterSpacing: '0.02em',
+    whiteSpace: 'nowrap',
+    boxShadow: '0 6px 16px rgba(107,30,46,0.14)',
+  },
+  ghostBtn: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 40,
+    padding: '0 14px',
+    background: '#fff',
+    border: '1px solid var(--border)',
+    borderRadius: 10,
+    color: 'var(--text2)',
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: 'pointer',
+    fontFamily: 'inherit',
+    whiteSpace: 'nowrap',
+  },
+  saveBtn: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 44,
+    padding: '0 20px',
+    background: 'var(--maroon)',
+    border: '1px solid var(--maroon-light)',
+    borderRadius: 10,
+    color: '#fff',
+    fontFamily: "'Barlow Condensed', sans-serif",
+    fontSize: 17,
+    fontWeight: 700,
+    cursor: 'pointer',
+    letterSpacing: '0.04em',
+    boxShadow: '0 8px 20px rgba(107,30,46,0.16)',
+  },
+  iconBtn: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 36,
+    height: 36,
+    background: '#fff',
+    border: '1px solid var(--border)',
+    borderRadius: 10,
+    fontSize: 15,
+    cursor: 'pointer',
+    padding: 0,
+    color: 'var(--text3)',
+    lineHeight: 1,
+    fontFamily: 'inherit',
+  },
   sectionHdr: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   sectionLabel: { fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#6B1E2E' },
+  stackedSection: { display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 24 },
+  sectionIntro: { fontSize: 13, color: 'var(--text3)', lineHeight: 1.5, maxWidth: 760 },
+  actionRow: { display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' },
+  splitLayout: { display: 'grid', gridTemplateColumns: 'minmax(260px, 320px) minmax(0, 1fr)', gap: 16, alignItems: 'start' },
+  sidePanel: { background: '#FFFFFF', border: '1px solid var(--border)', borderRadius: 16, padding: '18px', boxShadow: '0 10px 30px rgba(26,18,18,0.05)', position: 'sticky', top: 92 },
+  sidePanelTitle: { fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--maroon)', marginBottom: 12 },
+  sidePanelText: { fontSize: 13, color: 'var(--text3)', lineHeight: 1.5 },
+  quickNavList: { display: 'flex', flexDirection: 'column', gap: 8, marginTop: 14 },
+  quickNavBtn: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', minHeight: 46, padding: '0 14px', borderRadius: 12, border: '1px solid var(--border)', background: '#fff', color: 'var(--text)', fontSize: 13, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer', textAlign: 'left' },
+  quickNavMeta: { fontSize: 11, color: 'var(--text3)', fontWeight: 600 },
+  contentStack: { display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 },
+  statStrip: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 10 },
+  statTile: { background: '#FFFFFF', border: '1px solid var(--border)', borderRadius: 14, padding: '14px 16px', boxShadow: '0 6px 20px rgba(26,18,18,0.04)' },
+  statTileValue: { fontFamily: "'Barlow Condensed', sans-serif", fontSize: 28, fontWeight: 700, color: 'var(--maroon)', lineHeight: 1 },
+  statTileLabel: { fontSize: 11, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: 6, fontWeight: 700 },
   metricGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0,1fr))', gap: 12, marginBottom: 24 },
   metricCard: { background: '#FFFFFF', border: '1px solid var(--border)', borderRadius: 10, padding: '18px 18px 14px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' },
   metricVal: { fontFamily: "'Barlow Condensed', sans-serif", fontSize: 40, fontWeight: 700, lineHeight: 1.1, color: '#6B1E2E' },
@@ -206,18 +334,18 @@ export const A = {
   sessMain: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 },
   sessName: { fontSize: 15, fontWeight: 700, color: 'var(--text)', marginBottom: 3 },
   sessMeta: { fontSize: 13, color: 'var(--text2)', fontWeight: 500 },
-  sessActions: { display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 },
-  statusSelect: { fontSize: 12, padding: '4px 8px', borderRadius: 6, cursor: 'pointer', outline: 'none', fontFamily: 'inherit' },
+  sessActions: { display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' },
+  statusSelect: { minHeight: 36, width: 'auto', fontSize: 12, padding: '0 28px 0 10px', borderRadius: 10, cursor: 'pointer', outline: 'none', fontFamily: 'inherit', fontWeight: 700 },
   scorerRow: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 },
   scorerRowLabel: { fontSize: 13, color: 'var(--text2)', marginRight: 2, fontWeight: 600 },
   scorerChip: { display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#6B5314', background: '#FDF6E3', border: '1px solid var(--gold-dark)', borderRadius: 20, padding: '2px 10px' },
   chipX: { background: 'none', border: 'none', color: 'var(--gold-dark)', cursor: 'pointer', padding: 0, fontSize: 14, lineHeight: 1, fontFamily: 'inherit' },
-  addScorerBtn: { background: 'none', border: '1px dashed var(--gold-dark)', borderRadius: 20, color: 'var(--gold-dark)', fontSize: 11, padding: '2px 10px', cursor: 'pointer', fontFamily: 'inherit' },
+  addScorerBtn: { display: 'inline-flex', alignItems: 'center', minHeight: 30, background: 'none', border: '1px dashed var(--gold-dark)', borderRadius: 20, color: 'var(--gold-dark)', fontSize: 11, padding: '0 10px', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700 },
   wizardTitle: { fontFamily: "'Barlow Condensed', sans-serif", fontSize: 18, fontWeight: 700, color: 'var(--text)', marginBottom: 14, letterSpacing: '0.03em' },
   typeCard: { flex: 1, padding: '10px 14px', borderRadius: 8, cursor: 'pointer', transition: 'border-color 0.12s, background 0.12s' },
   splitBtn: { padding: '6px 14px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', transition: 'all 0.1s' },
-  card: { background: '#FFFFFF', border: '1px solid var(--border)', borderRadius: 10, padding: '18px', marginBottom: 12, boxShadow: '0 1px 3px rgba(0,0,0,0.03)' },
-  formRow: { display: 'flex', gap: 12, flexWrap: 'wrap' },
+  card: { background: '#FFFFFF', border: '1px solid var(--border)', borderRadius: 16, padding: '20px', marginBottom: 12, boxShadow: '0 10px 30px rgba(26,18,18,0.05)' },
+  formRow: { display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' },
   fieldLabel: { display: 'block', fontSize: 13, color: 'var(--text)', marginBottom: 6, fontWeight: 700 },
   selectInput: { background: '#fff', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', fontSize: 13, padding: '7px 10px', outline: 'none', fontFamily: 'inherit', width: '100%' },
   emptyCard: { background: '#FFFFFF', border: '1.5px dashed var(--border)', borderRadius: 10, padding: '24px', color: 'var(--text2)', fontSize: 14, fontWeight: 500, textAlign: 'center', marginBottom: 8 },
