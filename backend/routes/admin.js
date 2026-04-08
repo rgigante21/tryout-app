@@ -4,6 +4,7 @@ const pool    = require('../db/pool');
 const { authMiddleware, requireRole } = require('../middleware/auth');
 const { assignPlayerToSessions } = require('../utils/session-assignment');
 const { logAudit } = require('../utils/audit');
+const { findOrCreatePlayer, upsertPlayerRegistration } = require('../utils/registrations');
 
 const router = express.Router();
 const guard  = [authMiddleware, requireRole('admin', 'coordinator')];
@@ -88,19 +89,21 @@ router.get('/events/:id/stats', ...guard, async (req, res) => {
       pool.query('SELECT * FROM tryout_events WHERE id = $1', [id]),
       pool.query(`
         SELECT ag.name, ag.code, ag.sort_order,
-          COUNT(DISTINCT p.id)::int   AS players,
+          COUNT(DISTINCT per.id)::int AS players,
           COUNT(DISTINCT sc.id)::int  AS scores,
           COUNT(DISTINCT s.id)::int   AS sessions,
-          SUM(CASE WHEN p.outcome = 'moved_up'      THEN 1 ELSE 0 END)::int AS moved_up,
-          SUM(CASE WHEN p.outcome = 'retained'      THEN 1 ELSE 0 END)::int AS retained,
-          SUM(CASE WHEN p.outcome = 'left_program'  THEN 1 ELSE 0 END)::int AS left_program
+          SUM(CASE WHEN per.outcome = 'moved_up'      THEN 1 ELSE 0 END)::int AS moved_up,
+          SUM(CASE WHEN per.outcome = 'retained'      THEN 1 ELSE 0 END)::int AS retained,
+          SUM(CASE WHEN per.outcome = 'left_program'  THEN 1 ELSE 0 END)::int AS left_program
         FROM age_groups ag
-        LEFT JOIN players p  ON p.age_group_id = ag.id AND p.event_id = $1
+        LEFT JOIN player_event_registrations per
+          ON per.age_group_id = ag.id
+         AND per.event_id = $1
         LEFT JOIN sessions s ON s.age_group_id = ag.id AND s.event_id = $1
         LEFT JOIN scores sc  ON sc.session_id = s.id
         GROUP BY ag.id ORDER BY ag.sort_order
       `, [id]),
-      pool.query('SELECT COUNT(*)::int AS total FROM players WHERE event_id = $1', [id]),
+      pool.query('SELECT COUNT(*)::int AS total FROM player_event_registrations WHERE event_id = $1', [id]),
       pool.query('SELECT COUNT(*)::int AS total FROM sessions WHERE event_id = $1', [id]),
       pool.query(`
         SELECT COUNT(DISTINCT sc.id)::int AS total
@@ -129,7 +132,10 @@ router.patch('/players/:id/outcome', ...guard, async (req, res) => {
   if (!valid.includes(outcome)) return res.status(400).json({ error: 'Invalid outcome' });
   try {
     const r = await pool.query(
-      'UPDATE players SET outcome = $1 WHERE id = $2 RETURNING *',
+      `UPDATE player_event_registrations
+       SET outcome = $1, updated_at = NOW()
+       WHERE id = $2
+       RETURNING *`,
       [outcome, req.params.id]
     );
     if (!r.rows[0]) return res.status(404).json({ error: 'Player not found' });
@@ -146,9 +152,26 @@ router.get('/players', ...guard, async (req, res) => {
   }
   try {
     const r = await pool.query(
-      `SELECT * FROM players
-       WHERE age_group_id = $1 AND event_id = $2
-       ORDER BY jersey_number`,
+      `SELECT
+         per.id,
+         per.player_id,
+         p.first_name,
+         p.last_name,
+         p.date_of_birth,
+         p.gender,
+         p.external_id,
+         per.jersey_number,
+         per.position,
+         per.shot,
+         per.will_tryout,
+         per.outcome,
+         per.age_group_id,
+         per.event_id
+       FROM player_event_registrations per
+       JOIN players p ON p.id = per.player_id
+       WHERE per.age_group_id = $1
+         AND per.event_id = $2
+       ORDER BY per.jersey_number NULLS LAST, p.last_name, p.first_name`,
       [age_group_id, event_id]
     );
     res.json({ players: r.rows });
@@ -163,22 +186,44 @@ router.post('/players', ...guard, async (req, res) => {
     return res.status(400).json({ error: 'All fields required' });
   }
   try {
-    const r = await pool.query(
-      `INSERT INTO players (first_name, last_name, jersey_number, age_group_id, event_id)
-       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-      [firstName, lastName, parseInt(jerseyNumber), ageGroupId, eventId]
-    );
     const client = await pool.connect();
     try {
-      await assignPlayerToSessions(client, r.rows[0].id, ageGroupId, eventId);
+      await client.query('BEGIN');
+      const player = await findOrCreatePlayer(client, { firstName, lastName });
+      const registration = await upsertPlayerRegistration(client, {
+        playerId: player.id,
+        eventId,
+        ageGroupId,
+        jerseyNumber: parseInt(jerseyNumber),
+      });
+      await assignPlayerToSessions(client, player.id, ageGroupId, eventId);
+      await client.query('COMMIT');
+      res.status(201).json({
+        player: {
+          id: registration.id,
+          player_id: player.id,
+          first_name: player.first_name,
+          last_name: player.last_name,
+          date_of_birth: player.date_of_birth,
+          gender: player.gender,
+          external_id: player.external_id,
+          jersey_number: registration.jersey_number,
+          position: registration.position,
+          shot: registration.shot,
+          will_tryout: registration.will_tryout,
+          outcome: registration.outcome,
+          age_group_id: registration.age_group_id,
+          event_id: registration.event_id,
+        },
+      });
+      return;
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
     } finally {
       client.release();
     }
-    res.status(201).json({ player: r.rows[0] });
   } catch (err) {
-    if (err.code === '23505') {
-      return res.status(409).json({ error: 'Jersey number already used in this age group' });
-    }
     console.error('Add player error:', err);
     res.status(500).json({ error: 'Server error' });
   }
@@ -186,7 +231,32 @@ router.post('/players', ...guard, async (req, res) => {
 
 router.delete('/players/:id', ...guard, async (req, res) => {
   try {
-    await pool.query('DELETE FROM players WHERE id = $1', [req.params.id]);
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const lookup = await client.query(
+        'SELECT player_id FROM player_event_registrations WHERE id = $1',
+        [req.params.id]
+      );
+      const playerId = lookup.rows[0]?.player_id;
+      await client.query('DELETE FROM player_event_registrations WHERE id = $1', [req.params.id]);
+      if (playerId) {
+        await client.query(
+          `DELETE FROM players p
+           WHERE p.id = $1
+             AND NOT EXISTS (
+               SELECT 1 FROM player_event_registrations per WHERE per.player_id = p.id
+             )`,
+          [playerId]
+        );
+      }
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
@@ -207,15 +277,31 @@ router.post('/players/bulk', ...guard, async (req, res) => {
         errors.push({ ...p, reason: 'Missing fields' }); continue;
       }
       try {
-        const r = await client.query(
-          `INSERT INTO players (first_name,last_name,jersey_number,age_group_id,event_id)
-           VALUES ($1,$2,$3,$4,$5) RETURNING *`,
-          [p.firstName.trim(), p.lastName.trim(), parseInt(p.jerseyNumber), ageGroupId, eventId]
-        );
-        added.push(r.rows[0]);
-        await assignPlayerToSessions(client, r.rows[0].id, ageGroupId, eventId);
+        const player = await findOrCreatePlayer(client, {
+          firstName: p.firstName.trim(),
+          lastName: p.lastName.trim(),
+        });
+        const registration = await upsertPlayerRegistration(client, {
+          playerId: player.id,
+          eventId,
+          ageGroupId,
+          jerseyNumber: parseInt(p.jerseyNumber),
+        });
+        added.push({
+          id: registration.id,
+          player_id: player.id,
+          first_name: player.first_name,
+          last_name: player.last_name,
+          jersey_number: registration.jersey_number,
+          age_group_id: registration.age_group_id,
+          event_id: registration.event_id,
+          position: registration.position,
+          will_tryout: registration.will_tryout,
+          outcome: registration.outcome,
+        });
+        await assignPlayerToSessions(client, player.id, ageGroupId, eventId);
       } catch (e) {
-        if (e.code === '23505') errors.push({ ...p, reason: 'external_id conflict (concurrent import)' });
+        if (e.code === '23505') errors.push({ ...p, reason: 'registration conflict' });
         else errors.push({ ...p, reason: e.message });
       }
     }
@@ -417,12 +503,19 @@ router.get('/sessions/:id/completion', ...guard, async (req, res) => {
     const [totalsRes, perScorerRes] = await Promise.all([
       pool.query(`
         SELECT
-          COUNT(DISTINCT sp.player_id)::int                                    AS total_players,
-          COUNT(DISTINCT CASE WHEN sp.checked_in THEN sp.player_id END)::int   AS checked_in_count,
-          COUNT(DISTINCT sc.player_id)::int                                     AS players_with_any_score,
-          COUNT(DISTINCT sp.player_id) - COUNT(DISTINCT sc.player_id)           AS players_missing_scores
+          COUNT(DISTINCT COALESCE(sp.registration_id, per.id))::int AS total_players,
+          COUNT(DISTINCT CASE WHEN sp.checked_in THEN COALESCE(sp.registration_id, per.id) END)::int AS checked_in_count,
+          COUNT(DISTINCT COALESCE(sc.registration_id, per.id))::int AS players_with_any_score,
+          COUNT(DISTINCT COALESCE(sp.registration_id, per.id))
+            - COUNT(DISTINCT COALESCE(sc.registration_id, per.id)) AS players_missing_scores
         FROM session_players sp
-        LEFT JOIN scores sc ON sc.player_id = sp.player_id AND sc.session_id = $1
+        LEFT JOIN player_event_registrations per ON per.id = sp.registration_id
+        LEFT JOIN scores sc
+          ON sc.session_id = $1
+         AND (
+              sc.registration_id = sp.registration_id
+           OR (sp.registration_id IS NULL AND sc.player_id = sp.player_id)
+         )
         WHERE sp.session_id = $1
       `, [sessionId]),
       pool.query(`

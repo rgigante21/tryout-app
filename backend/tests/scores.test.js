@@ -115,11 +115,17 @@ describe('POST /api/scores (player not on roster)', () => {
   it('returns 403 when player is not on the session roster', async () => {
     // Insert a player in the same age group but NOT into session_players
     const pR = await pool.query(
-      `INSERT INTO players (first_name, last_name, jersey_number, age_group_id, event_id)
-       VALUES ('Ghost','Player',99,$1,$2) RETURNING id`,
-      [fixture.ageGroup.id, fixture.event.id]
+      `INSERT INTO players (first_name, last_name)
+       VALUES ('Ghost','Player') RETURNING id`
     );
     const ghostPlayerId = pR.rows[0].id;
+
+    await pool.query(
+      `INSERT INTO player_event_registrations
+         (player_id, event_id, age_group_id, jersey_number, position, will_tryout)
+       VALUES ($1,$2,$3,99,'skater',true)`,
+      [ghostPlayerId, fixture.event.id, fixture.ageGroup.id]
+    );
 
     const res = await request(app)
       .post('/api/scores')
@@ -129,6 +135,7 @@ describe('POST /api/scores (player not on roster)', () => {
     expect(res.status).toBe(403);
 
     // cleanup ghost player
+    await pool.query('DELETE FROM player_event_registrations WHERE player_id = $1', [ghostPlayerId]);
     await pool.query('DELETE FROM players WHERE id = $1', [ghostPlayerId]);
   });
 });

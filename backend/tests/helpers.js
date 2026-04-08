@@ -131,19 +131,27 @@ async function createEventFixture() {
 
   // Player
   const pR = await pool.query(
-    `INSERT INTO players (first_name, last_name, jersey_number, age_group_id, event_id)
-     VALUES ('Player','One',1,$1,$2) RETURNING *`,
-    [ageGroup.id, event.id]
+    `INSERT INTO players (first_name, last_name)
+     VALUES ('Player','One') RETURNING *`
   );
   const player = pR.rows[0];
 
+  const regR = await pool.query(
+    `INSERT INTO player_event_registrations
+       (player_id, event_id, age_group_id, jersey_number, position, will_tryout)
+     VALUES ($1,$2,$3,1,'skater',true)
+     RETURNING *`,
+    [player.id, event.id, ageGroup.id]
+  );
+  const registration = regR.rows[0];
+
   // Add player to session roster
   await pool.query(
-    `INSERT INTO session_players (session_id, player_id) VALUES ($1,$2)`,
-    [session.id, player.id]
+    `INSERT INTO session_players (session_id, player_id, registration_id) VALUES ($1,$2,$3)`,
+    [session.id, player.id, registration.id]
   );
 
-  return { event, ageGroup, block, session, player };
+  return { event, ageGroup, block, session, player, registration };
 }
 
 /**
@@ -175,7 +183,7 @@ async function cleanup({ userIds = [], eventIds = [], ageGroupIds = [] } = {}) {
     await run(`DELETE FROM session_players WHERE session_id IN (SELECT id FROM sessions WHERE event_id = ANY($1))`, [eventIds]);
     await run(`DELETE FROM sessions        WHERE event_id = ANY($1)`, [eventIds]);
     await run(`DELETE FROM session_blocks  WHERE event_id = ANY($1)`, [eventIds]);
-    await run(`DELETE FROM players         WHERE event_id = ANY($1)`, [eventIds]);
+    await run(`DELETE FROM player_event_registrations WHERE event_id = ANY($1)`, [eventIds]);
     await run(`DELETE FROM tryout_events   WHERE id = ANY($1)`, [eventIds]);
   }
 
@@ -187,9 +195,16 @@ async function cleanup({ userIds = [], eventIds = [], ageGroupIds = [] } = {}) {
     await run(`DELETE FROM session_players WHERE session_id IN (SELECT id FROM sessions WHERE age_group_id = ANY($1))`, [ageGroupIds]);
     await run(`DELETE FROM sessions        WHERE age_group_id = ANY($1)`, [ageGroupIds]);
     await run(`DELETE FROM session_blocks  WHERE age_group_id = ANY($1)`, [ageGroupIds]);
-    await run(`DELETE FROM players         WHERE age_group_id = ANY($1)`, [ageGroupIds]);
+    await run(`DELETE FROM player_event_registrations WHERE age_group_id = ANY($1)`, [ageGroupIds]);
     await run(`DELETE FROM age_groups      WHERE id = ANY($1)`, [ageGroupIds]);
   }
+
+  await run(`
+    DELETE FROM players p
+    WHERE NOT EXISTS (
+      SELECT 1 FROM player_event_registrations per WHERE per.player_id = p.id
+    )
+  `, []);
 
   if (userIds.length) {
     await run(`DELETE FROM users WHERE id = ANY($1)`, [userIds]);

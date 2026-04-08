@@ -35,9 +35,17 @@ async function assignPlayersToBlock(client, blockId) {
 
   // Load all eligible players for this age group + event
   const playerRes = await client.query(
-    `SELECT id, first_name, last_name, jersey_number
-     FROM players
-     WHERE age_group_id = $1 AND event_id = $2 AND will_tryout = true`,
+    `SELECT
+       per.id AS registration_id,
+       per.player_id,
+       p.first_name,
+       p.last_name,
+       per.jersey_number
+     FROM player_event_registrations per
+     JOIN players p ON p.id = per.player_id
+     WHERE per.age_group_id = $1
+       AND per.event_id = $2
+       AND per.will_tryout = true`,
     [block.age_group_id, block.event_id]
   );
   const players = playerRes.rows;
@@ -50,16 +58,16 @@ async function assignPlayersToBlock(client, blockId) {
     for (const session of sessions) {
       // Get all players assigned to a team in this block
       const teamPlayerRes = await client.query(
-        `SELECT DISTINCT player_id FROM session_players sp
+        `SELECT DISTINCT player_id, registration_id FROM session_players sp
          JOIN sessions s ON s.id = sp.session_id
          WHERE s.block_id = $1`,
         [blockId]
       );
       for (const row of teamPlayerRes.rows) {
         await client.query(
-          `INSERT INTO session_players (session_id, player_id)
-           VALUES ($1, $2) ON CONFLICT DO NOTHING`,
-          [session.id, row.player_id]
+          `INSERT INTO session_players (session_id, player_id, registration_id)
+           VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+          [session.id, row.player_id, row.registration_id]
         );
         assigned++;
       }
@@ -100,10 +108,10 @@ async function assignPlayersToBlock(client, blockId) {
     }
 
     for (const player of eligible) {
-      await client.query(
-        `INSERT INTO session_players (session_id, player_id)
-         VALUES ($1, $2) ON CONFLICT DO NOTHING`,
-        [session.id, player.id]
+        await client.query(
+        `INSERT INTO session_players (session_id, player_id, registration_id)
+         VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+        [session.id, player.player_id, player.registration_id]
       );
       assigned++;
     }
@@ -123,8 +131,16 @@ async function assignPlayersToBlock(client, blockId) {
  */
 async function assignPlayerToSessions(client, playerId, ageGroupId, eventId) {
   const playerRes = await client.query(
-    'SELECT * FROM players WHERE id = $1',
-    [playerId]
+    `SELECT
+       p.*,
+       per.id AS registration_id,
+       per.jersey_number AS registration_jersey_number
+     FROM players p
+     LEFT JOIN player_event_registrations per
+       ON per.player_id = p.id
+      AND per.event_id = $2
+     WHERE p.id = $1`,
+    [playerId, eventId]
   );
   const player = playerRes.rows[0];
   if (!player) return { assigned: 0 };
@@ -156,7 +172,8 @@ async function assignPlayerToSessions(client, playerId, ageGroupId, eventId) {
       case 'jersey_range': {
         const min = row.jersey_min ?? 0;
         const max = row.jersey_max ?? 99999;
-        matches = player.jersey_number >= min && player.jersey_number <= max;
+        const jerseyNumber = player.registration_jersey_number ?? player.jersey_number;
+        matches = jerseyNumber >= min && jerseyNumber <= max;
         break;
       }
       case 'none':
@@ -171,9 +188,9 @@ async function assignPlayerToSessions(client, playerId, ageGroupId, eventId) {
 
     if (matches) {
       await client.query(
-        `INSERT INTO session_players (session_id, player_id)
-         VALUES ($1, $2) ON CONFLICT DO NOTHING`,
-        [row.session_id, playerId]
+        `INSERT INTO session_players (session_id, player_id, registration_id)
+         VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+        [row.session_id, playerId, player.registration_id]
       );
       assigned++;
     }

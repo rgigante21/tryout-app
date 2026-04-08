@@ -45,7 +45,7 @@ router.get('/', ...guard, async (req, res) => {
         ag.name        AS age_group_name,
         ag.code        AS age_group_code,
         COUNT(DISTINCT s.id)::int           AS session_count,
-        COUNT(DISTINCT sp.player_id)::int   AS player_count
+        COUNT(DISTINCT COALESCE(sp.registration_id, sp.player_id))::int AS player_count
       FROM session_blocks sb
       JOIN age_groups ag ON ag.id = sb.age_group_id
       LEFT JOIN sessions s ON s.block_id = sb.id
@@ -81,7 +81,7 @@ router.get('/:id', ...guard, async (req, res) => {
     const sessionsRes = await pool.query(`
       SELECT
         s.*,
-        COUNT(sp.player_id)::int  AS player_count,
+        COUNT(DISTINCT COALESCE(sp.registration_id, sp.player_id))::int AS player_count,
         COUNT(sc.id)::int         AS score_count,
         COUNT(ss.user_id)::int    AS scorer_count
       FROM sessions s
@@ -98,7 +98,7 @@ router.get('/:id', ...guard, async (req, res) => {
     if (block.block_type === 'game') {
       const teamsRes = await pool.query(`
         SELECT gt.*,
-          COUNT(sp.player_id)::int AS player_count
+          COUNT(DISTINCT COALESCE(sp.registration_id, sp.player_id))::int AS player_count
         FROM game_teams gt
         LEFT JOIN sessions s ON s.block_id = gt.block_id
         LEFT JOIN session_players sp ON sp.session_id = s.id AND sp.team_number = gt.team_number
@@ -245,24 +245,24 @@ router.post('/', ...guard, async (req, res) => {
       // 3b. Assign players to teams if random
       if (playerAssignment === 'random' && teams.length > 0) {
         const playerRes = await client.query(
-          `SELECT id FROM players
+          `SELECT player_id, id AS registration_id FROM player_event_registrations
            WHERE age_group_id = $1 AND event_id = $2 AND will_tryout = true
            ORDER BY RANDOM()`,
           [ageGroupId, eventId]
         );
-        const playerIds  = playerRes.rows.map(r => r.id);
+        const registrations = playerRes.rows;
         const teamNums   = teams.map(t => t.teamNumber);
 
         // Round-robin assign to teams
-        for (let i = 0; i < playerIds.length; i++) {
+        for (let i = 0; i < registrations.length; i++) {
           const teamNum = teamNums[i % teamNums.length];
           // Add to first game session as a representative assignment
           // (team membership tracked via team_number in session_players)
           for (const session of createdSessions) {
             await client.query(
-              `INSERT INTO session_players (session_id, player_id, team_number)
-               VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`,
-              [session.id, playerIds[i], teamNum]
+              `INSERT INTO session_players (session_id, player_id, registration_id, team_number)
+               VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING`,
+              [session.id, registrations[i].player_id, registrations[i].registration_id, teamNum]
             );
           }
         }
@@ -326,17 +326,21 @@ router.patch('/:id', ...guard, async (req, res) => {
           'SELECT team_number FROM game_teams WHERE block_id = $1 ORDER BY team_number', [block.id]
         );
         const playerRes = await client.query(
-          `SELECT id FROM players WHERE age_group_id = $1 AND event_id = $2 AND will_tryout = true ORDER BY RANDOM()`,
+          `SELECT player_id, id AS registration_id
+           FROM player_event_registrations
+           WHERE age_group_id = $1 AND event_id = $2 AND will_tryout = true
+           ORDER BY RANDOM()`,
           [block.age_group_id, block.event_id]
         );
-        const playerIds = playerRes.rows.map(r => r.id);
+        const registrations = playerRes.rows;
         const teamNums = teamsRes.rows.map(r => r.team_number);
-        for (let i = 0; i < playerIds.length; i++) {
+        for (let i = 0; i < registrations.length; i++) {
           const teamNum = teamNums[i % teamNums.length];
           for (const session of sessionsRes.rows) {
             await client.query(
-              `INSERT INTO session_players (session_id, player_id, team_number) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`,
-              [session.id, playerIds[i], teamNum]
+              `INSERT INTO session_players (session_id, player_id, registration_id, team_number)
+               VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING`,
+              [session.id, registrations[i].player_id, registrations[i].registration_id, teamNum]
             );
           }
         }
@@ -402,9 +406,10 @@ router.get('/:id/suggest-ranges', ...guard, async (req, res) => {
     if (!block) return res.status(404).json({ error: 'Block not found' });
 
     const playerRes = await pool.query(
-      `SELECT UPPER(LEFT(last_name, 1)) AS initial, COUNT(*)::int AS cnt
-       FROM players
-       WHERE age_group_id = $1 AND event_id = $2 AND will_tryout = true
+      `SELECT UPPER(LEFT(p.last_name, 1)) AS initial, COUNT(*)::int AS cnt
+       FROM player_event_registrations per
+       JOIN players p ON p.id = per.player_id
+       WHERE per.age_group_id = $1 AND per.event_id = $2 AND per.will_tryout = true
        GROUP BY initial ORDER BY initial`,
       [block.age_group_id, block.event_id]
     );

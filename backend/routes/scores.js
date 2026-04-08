@@ -2,6 +2,7 @@ const express = require('express');
 const pool    = require('../db/pool');
 const { authMiddleware, requireRole } = require('../middleware/auth');
 const { logAudit } = require('../utils/audit');
+const { resolveRegistrationForSession } = require('../utils/registrations');
 
 const router = express.Router();
 
@@ -67,18 +68,21 @@ router.post('/', authMiddleware, async (req, res) => {
       }
     }
 
+    const registrationId = await resolveRegistrationForSession(pool, sessionId, playerId);
+
     const result = await pool.query(`
-      INSERT INTO scores (session_id, player_id, scorer_id, skating, puck_skills, hockey_sense, notes)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      INSERT INTO scores (session_id, player_id, registration_id, scorer_id, skating, puck_skills, hockey_sense, notes)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       ON CONFLICT (session_id, player_id, scorer_id)
       DO UPDATE SET
+        registration_id = COALESCE(EXCLUDED.registration_id, scores.registration_id),
         skating      = EXCLUDED.skating,
         puck_skills  = EXCLUDED.puck_skills,
         hockey_sense = EXCLUDED.hockey_sense,
         notes        = EXCLUDED.notes,
         updated_at   = NOW()
       RETURNING *
-    `, [sessionId, playerId, req.user.id, skating, puckSkills, hockeySense, notes || null]);
+    `, [sessionId, playerId, registrationId, req.user.id, skating, puckSkills, hockeySense, notes || null]);
 
     await logAudit('score_submitted', req.user.id, {
       sessionId,
@@ -101,10 +105,11 @@ router.get('/rankings/:ageGroupId/:eventId',
     try {
       const result = await pool.query(`
         SELECT
-          p.id,
+          per.id AS id,
+          p.id AS player_id,
           p.first_name,
           p.last_name,
-          p.jersey_number,
+          per.jersey_number,
           ROUND(AVG(sc.skating)::numeric, 2)      AS avg_skating,
           ROUND(AVG(sc.puck_skills)::numeric, 2)  AS avg_puck,
           ROUND(AVG(sc.hockey_sense)::numeric, 2) AS avg_sense,
@@ -112,15 +117,18 @@ router.get('/rankings/:ageGroupId/:eventId',
             (sc.skating + sc.puck_skills + sc.hockey_sense) / 3.0
           )::numeric, 2) AS avg_overall,
           COUNT(sc.id) AS score_count
-        FROM players p
-        LEFT JOIN scores sc ON sc.player_id = p.id
-        LEFT JOIN sessions s ON s.id = sc.session_id
-          AND s.age_group_id = $1
-          AND s.event_id = $2
-        WHERE p.age_group_id = $1
-          AND p.event_id = $2
-        GROUP BY p.id, p.first_name, p.last_name, p.jersey_number
-        ORDER BY avg_overall DESC NULLS LAST, p.jersey_number
+        FROM player_event_registrations per
+        JOIN players p ON p.id = per.player_id
+        LEFT JOIN sessions s
+          ON s.age_group_id = $1
+         AND s.event_id = $2
+        LEFT JOIN scores sc
+          ON sc.session_id = s.id
+         AND (sc.registration_id = per.id OR (sc.registration_id IS NULL AND sc.player_id = p.id))
+        WHERE per.age_group_id = $1
+          AND per.event_id = $2
+        GROUP BY per.id, p.id, p.first_name, p.last_name, per.jersey_number
+        ORDER BY avg_overall DESC NULLS LAST, per.jersey_number
       `, [ageGroupId, eventId]);
 
       res.json({ rankings: result.rows });
@@ -147,12 +155,12 @@ router.get('/dashboard',
           ag.sort_order,
           COUNT(DISTINCT s.id)    AS total_sessions,
           COUNT(DISTINCT CASE WHEN s.status = 'complete' OR s.status = 'scoring_complete' OR s.status = 'finalized' THEN s.id END) AS complete_sessions,
-          COUNT(DISTINCT p.id)    AS total_players,
+          COUNT(DISTINCT per.id)  AS total_players,
           COUNT(DISTINCT sc.id)   AS total_scores,
           COUNT(DISTINCT ss.user_id) AS total_scorers
         FROM age_groups ag
         LEFT JOIN sessions s ON s.age_group_id = ag.id ${eventFilter}
-        LEFT JOIN players p ON p.age_group_id = ag.id ${playerEventFilter}
+        LEFT JOIN player_event_registrations per ON per.age_group_id = ag.id ${playerEventFilter.replace('p.', 'per.')}
         LEFT JOIN scores sc ON sc.session_id = s.id
         LEFT JOIN session_scorers ss ON ss.session_id = s.id
         GROUP BY ag.id, ag.name, ag.code, ag.sort_order

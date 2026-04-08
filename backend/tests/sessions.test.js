@@ -145,8 +145,8 @@ describe('PATCH /api/session-players/move', () => {
   it('admin can move a player between sessions', async () => {
     // Add player to otherFixture session first so the move is valid
     await pool.query(
-      `INSERT INTO session_players (session_id, player_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
-      [otherFixture.session.id, fixture.player.id]
+      `INSERT INTO session_players (session_id, player_id, registration_id) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`,
+      [otherFixture.session.id, fixture.player.id, fixture.registration.id]
     ).catch(() => {});
 
     const res = await request(app)

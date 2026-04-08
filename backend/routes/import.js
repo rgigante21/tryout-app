@@ -13,6 +13,7 @@ const express = require('express');
 const pool    = require('../db/pool');
 const { authMiddleware, requireRole } = require('../middleware/auth');
 const { assignPlayerToSessions } = require('../utils/session-assignment');
+const { findOrCreatePlayer, upsertPlayerRegistration } = require('../utils/registrations');
 
 const router = express.Router();
 const guard  = [authMiddleware, requireRole('admin', 'coordinator')];
@@ -177,9 +178,9 @@ function parseDateOfBirth(raw) {
 function normalizeGender(raw) {
   if (!raw) return null;
   const lower = raw.toLowerCase().trim();
-  if (lower === 'male'   || lower === 'm') return 'male';
-  if (lower === 'female' || lower === 'f') return 'female';
-  return 'other';
+  if (lower === 'male'   || lower === 'm') return 'M';
+  if (lower === 'female' || lower === 'f') return 'F';
+  return null;
 }
 
 // ─────────────────────────────────────────
@@ -222,11 +223,18 @@ router.post('/preview', ...guard, async (req, res) => {
     });
 
     // Load existing jerseys and external_ids for context
-    const [existingRes, blocksRes] = await Promise.all([
+    const [existingRes, externalRes, blocksRes] = await Promise.all([
       pool.query(
-        `SELECT jersey_number, external_id FROM players
-          WHERE age_group_id = $1 AND event_id = $2`,
+        `SELECT per.jersey_number
+         FROM player_event_registrations per
+         WHERE per.age_group_id = $1
+           AND per.event_id = $2`,
         [ageGroupId, eventId]
+      ),
+      pool.query(
+        `SELECT external_id
+         FROM players
+         WHERE external_id IS NOT NULL`
       ),
       pool.query(
         `SELECT sb.split_method, s.id AS session_id, s.name AS session_name,
@@ -242,7 +250,7 @@ router.post('/preview', ...guard, async (req, res) => {
 
     const existingJerseys    = new Set(existingRes.rows.map(r => r.jersey_number));
     const existingExternalIds = new Set(
-      existingRes.rows.filter(r => r.external_id).map(r => r.external_id)
+      externalRes.rows.map(r => r.external_id)
     );
     const sessions = blocksRes.rows;
 
@@ -381,53 +389,61 @@ router.post('/commit', ...guard, async (req, res) => {
       }
 
       try {
-        if (externalId) {
-          // Upsert by external_id within the same event
-          const r = await client.query(
-            `INSERT INTO players
-               (first_name, last_name, jersey_number, age_group_id, event_id,
-                position, will_tryout, birth_year, date_of_birth, shot, gender, external_id)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-             ON CONFLICT (external_id, event_id) WHERE external_id IS NOT NULL
-             DO UPDATE SET
-               first_name    = EXCLUDED.first_name,
-               last_name     = EXCLUDED.last_name,
-               jersey_number = EXCLUDED.jersey_number,
-               position      = EXCLUDED.position,
-               will_tryout   = EXCLUDED.will_tryout,
-               birth_year    = EXCLUDED.birth_year,
-               date_of_birth = EXCLUDED.date_of_birth,
-               shot          = EXCLUDED.shot,
-               gender        = EXCLUDED.gender
-             RETURNING *, (xmax <> 0) AS was_updated`,
-            [firstName, lastName, jerseyNumber, ageGroupId, eventId,
-             position, willTryout, birthYear, dateOfBirth, shot, gender, externalId]
-          );
-          const player = r.rows[0];
-          if (player.was_updated) {
-            updated.push(player);
-          } else {
-            added.push(player);
-            await assignPlayerToSessions(client, player.id, ageGroupId, eventId);
-          }
+        const player = await findOrCreatePlayer(client, {
+          firstName,
+          lastName,
+          dateOfBirth,
+          gender,
+          externalId,
+          shot,
+          birthYear,
+        });
+
+        const registration = await upsertPlayerRegistration(client, {
+          playerId: player.id,
+          eventId,
+          ageGroupId,
+          jerseyNumber,
+          position,
+          shot,
+          willTryout,
+          outcome: null,
+        });
+
+        if (registration.was_updated) {
+          updated.push({
+            id: registration.id,
+            player_id: player.id,
+            first_name: player.first_name,
+            last_name: player.last_name,
+            jersey_number: registration.jersey_number,
+            age_group_id: registration.age_group_id,
+            event_id: registration.event_id,
+            position: registration.position,
+            shot: registration.shot,
+            gender: player.gender,
+            external_id: player.external_id,
+          });
         } else {
-          // No external_id — always insert (duplicate jerseys allowed)
-          const r = await client.query(
-            `INSERT INTO players
-               (first_name, last_name, jersey_number, age_group_id, event_id,
-                position, will_tryout, birth_year, date_of_birth, shot, gender)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-             RETURNING *`,
-            [firstName, lastName, jerseyNumber, ageGroupId, eventId,
-             position, willTryout, birthYear, dateOfBirth, shot, gender]
-          );
-          const player = r.rows[0];
-          added.push(player);
-          await assignPlayerToSessions(client, player.id, ageGroupId, eventId);
+          added.push({
+            id: registration.id,
+            player_id: player.id,
+            first_name: player.first_name,
+            last_name: player.last_name,
+            jersey_number: registration.jersey_number,
+            age_group_id: registration.age_group_id,
+            event_id: registration.event_id,
+            position: registration.position,
+            shot: registration.shot,
+            gender: player.gender,
+            external_id: player.external_id,
+          });
         }
+
+        await assignPlayerToSessions(client, player.id, ageGroupId, eventId);
       } catch (e) {
         if (e.code === '23505') {
-          errors.push({ firstName, lastName, jerseyNumber, reason: 'external_id conflict (concurrent import)' });
+          errors.push({ firstName, lastName, jerseyNumber, reason: 'player or registration conflict' });
         } else {
           errors.push({ firstName, lastName, jerseyNumber, reason: e.message });
         }

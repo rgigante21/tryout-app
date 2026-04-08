@@ -1,6 +1,7 @@
 const express = require('express');
 const pool    = require('../db/pool');
 const { authMiddleware, requireRole, requireAssignedSessionAccess } = require('../middleware/auth');
+const { resolveRegistrationForSession } = require('../utils/registrations');
 
 const router = express.Router();
 
@@ -74,7 +75,7 @@ router.get('/', authMiddleware, requireRole('admin', 'coordinator'), async (req,
         ag.code  AS age_group_code,
         te.name  AS event_name,
         COUNT(DISTINCT ss.user_id)   AS scorer_count,
-        COUNT(DISTINCT sp.player_id) AS player_count,
+        COUNT(DISTINCT COALESCE(sp.registration_id, sp.player_id)) AS player_count,
         COUNT(DISTINCT sc.id)        AS total_scores
       FROM sessions s
       JOIN age_groups ag ON ag.id = s.age_group_id
@@ -218,15 +219,18 @@ router.get('/:id/players', authMiddleware, requireAssignedSessionAccess(), async
     if (hasExplicitRoster) {
       playersResult = await pool.query(`
         SELECT
-          p.id, p.first_name, p.last_name, p.jersey_number, p.position,
+          p.id, sp.registration_id, p.first_name, p.last_name,
+          COALESCE(per.jersey_number, p.jersey_number) AS jersey_number,
+          COALESCE(per.position, p.position) AS position,
           sp.checked_in, sp.checked_in_at, sp.team_number, sp.attendance_status,
           sc.skating, sc.puck_skills, sc.hockey_sense, sc.notes,
           sc.id AS score_id, sc.status AS score_status,
           CASE WHEN sc.id IS NOT NULL THEN true ELSE false END AS scored
         FROM session_players sp
         JOIN players p ON p.id = sp.player_id
+        LEFT JOIN player_event_registrations per ON per.id = sp.registration_id
         LEFT JOIN scores sc
-          ON sc.player_id = p.id
+          ON (sc.registration_id = sp.registration_id OR (sp.registration_id IS NULL AND sc.player_id = p.id))
           AND sc.session_id = $1
           AND sc.scorer_id = $2
         WHERE sp.session_id = $1
@@ -235,30 +239,37 @@ router.get('/:id/players', authMiddleware, requireAssignedSessionAccess(), async
     } else {
       playersResult = await pool.query(`
         SELECT
-          p.id, p.first_name, p.last_name, p.jersey_number, p.position,
+          p.id, per.id AS registration_id, p.first_name, p.last_name,
+          per.jersey_number, per.position,
           false AS checked_in, null AS checked_in_at, null AS team_number,
           null AS attendance_status,
           sc.skating, sc.puck_skills, sc.hockey_sense, sc.notes,
           sc.id AS score_id, sc.status AS score_status,
           CASE WHEN sc.id IS NOT NULL THEN true ELSE false END AS scored
-        FROM players p
+        FROM player_event_registrations per
+        JOIN players p ON p.id = per.player_id
         LEFT JOIN scores sc
-          ON sc.player_id = p.id
+          ON (sc.registration_id = per.id OR (sc.registration_id IS NULL AND sc.player_id = p.id))
           AND sc.session_id = $1
           AND sc.scorer_id = $2
-        WHERE p.age_group_id = $3 AND p.event_id = $4
-        ORDER BY p.jersey_number
+        WHERE per.age_group_id = $3 AND per.event_id = $4
+        ORDER BY per.jersey_number
       `, [sessionId, req.user.id, session.age_group_id, session.event_id]);
     }
 
     // Completion stats: how many players have been scored by at least one scorer
     const completionRes = await pool.query(`
       SELECT
-        COUNT(DISTINCT sp2.player_id)::int                                    AS total_players,
-        COUNT(DISTINCT CASE WHEN sp2.checked_in THEN sp2.player_id END)::int  AS checked_in_count,
-        COUNT(DISTINCT sc2.player_id)::int                                     AS scored_players
+        COUNT(DISTINCT COALESCE(sp2.registration_id, sp2.player_id))::int AS total_players,
+        COUNT(DISTINCT CASE WHEN sp2.checked_in THEN COALESCE(sp2.registration_id, sp2.player_id) END)::int AS checked_in_count,
+        COUNT(DISTINCT COALESCE(sc2.registration_id, sc2.player_id))::int AS scored_players
       FROM session_players sp2
-      LEFT JOIN scores sc2 ON sc2.player_id = sp2.player_id AND sc2.session_id = $1
+      LEFT JOIN scores sc2
+        ON sc2.session_id = $1
+       AND (
+            sc2.registration_id = sp2.registration_id
+         OR (sp2.registration_id IS NULL AND sc2.player_id = sp2.player_id)
+       )
       WHERE sp2.session_id = $1
     `, [sessionId]);
 
@@ -286,21 +297,28 @@ router.patch('/:id/players/:playerId/checkin', authMiddleware, requireRole('admi
   }
 
   try {
+    const registrationId = await resolveRegistrationForSession(pool, sessionId, playerId);
     const r = await pool.query(
       `UPDATE session_players
        SET checked_in        = $1,
            checked_in_at     = CASE WHEN $1 = true THEN NOW() ELSE NULL END,
            attendance_status = COALESCE($4, attendance_status)
-       WHERE session_id = $2 AND player_id = $3
+       WHERE session_id = $2 AND (player_id = $3 OR registration_id = $5)
        RETURNING *`,
-      [!!checkedIn, sessionId, playerId, attendanceStatus || null]
+      [!!checkedIn, sessionId, playerId, attendanceStatus || null, registrationId]
     );
 
     if (!r.rows[0]) {
+      const sessionRes = await pool.query('SELECT event_id FROM sessions WHERE id = $1', [sessionId]);
+      const derivedReg = registrationId || (await resolveRegistrationForSession(pool, sessionId, playerId));
+      const playerRes = await pool.query('SELECT id FROM players WHERE id = $1', [playerId]);
+      if (!sessionRes.rows[0] || !playerRes.rows[0]) {
+        return res.status(404).json({ error: 'Player or session not found' });
+      }
       const insert = await pool.query(
-        `INSERT INTO session_players (session_id, player_id, checked_in, checked_in_at, attendance_status)
-         VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-        [sessionId, playerId, !!checkedIn, checkedIn ? new Date() : null, attendanceStatus || null]
+        `INSERT INTO session_players (session_id, player_id, registration_id, checked_in, checked_in_at, attendance_status)
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+        [sessionId, playerId, derivedReg, !!checkedIn, checkedIn ? new Date() : null, attendanceStatus || null]
       );
       return res.json({ sessionPlayer: insert.rows[0], walkin: true });
     }

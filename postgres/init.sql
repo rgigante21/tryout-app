@@ -107,17 +107,42 @@ CREATE TABLE players (
   id            SERIAL PRIMARY KEY,
   first_name    VARCHAR(100) NOT NULL,
   last_name     VARCHAR(100) NOT NULL,
-  jersey_number INT NOT NULL,
+  date_of_birth DATE,
+  gender        VARCHAR(1),
+  external_id   VARCHAR(100),
+  shot          VARCHAR(1) CHECK (shot IN ('L','R')),
+  birth_year    INT,
+  -- Transitional legacy columns kept nullable during registration-model cutover
+  jersey_number INT,
   age_group_id  INT REFERENCES age_groups(id),
   event_id      INT REFERENCES tryout_events(id) ON DELETE CASCADE,
   position      VARCHAR(20) DEFAULT 'skater',
   -- position: skater | goalie | defense | forward
   will_tryout   BOOLEAN DEFAULT TRUE,
-  birth_year    INT,
   outcome       VARCHAR(20) DEFAULT NULL,
   -- outcome: moved_up | retained | left_program | NULL
   created_at    TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE(jersey_number, age_group_id, event_id)
+  updated_at    TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX players_external_id_uniq
+  ON players (external_id)
+  WHERE external_id IS NOT NULL;
+
+CREATE TABLE player_event_registrations (
+  id            SERIAL PRIMARY KEY,
+  player_id     INT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+  event_id      INT NOT NULL REFERENCES tryout_events(id) ON DELETE CASCADE,
+  age_group_id  INT NOT NULL REFERENCES age_groups(id),
+  jersey_number INT,
+  position      VARCHAR(20) DEFAULT 'skater',
+  shot          VARCHAR(1) CHECK (shot IN ('L','R')),
+  will_tryout   BOOLEAN DEFAULT TRUE,
+  outcome       VARCHAR(20) DEFAULT NULL,
+  registered_at TIMESTAMPTZ DEFAULT NOW(),
+  created_at    TIMESTAMPTZ DEFAULT NOW(),
+  updated_at    TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(player_id, event_id)
 );
 
 -- ─────────────────────────────────────────
@@ -130,6 +155,7 @@ CREATE TABLE session_players (
   id                SERIAL PRIMARY KEY,
   session_id        INT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
   player_id         INT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+  registration_id   INT REFERENCES player_event_registrations(id) ON DELETE CASCADE,
   team_number       SMALLINT,        -- populated for game sessions
   checked_in        BOOLEAN DEFAULT FALSE,
   checked_in_at     TIMESTAMPTZ,
@@ -186,6 +212,7 @@ CREATE TABLE scores (
   id             SERIAL PRIMARY KEY,
   session_id     INT REFERENCES sessions(id) ON DELETE CASCADE,
   player_id      INT REFERENCES players(id) ON DELETE CASCADE,
+  registration_id INT REFERENCES player_event_registrations(id) ON DELETE CASCADE,
   scorer_id      INT REFERENCES users(id),
   -- Legacy hardcoded criteria (kept for backward compat during POC)
   skating        SMALLINT CHECK (skating BETWEEN 1 AND 5),
@@ -230,11 +257,16 @@ CREATE INDEX idx_session_event        ON sessions(event_id);
 CREATE INDEX idx_session_block        ON sessions(block_id);
 CREATE INDEX idx_players_event        ON players(event_id);
 CREATE INDEX idx_players_age_group    ON players(age_group_id);
+CREATE INDEX idx_player_registrations_event       ON player_event_registrations(event_id);
+CREATE INDEX idx_player_registrations_event_ag    ON player_event_registrations(event_id, age_group_id);
+CREATE INDEX idx_player_registrations_player      ON player_event_registrations(player_id);
 CREATE INDEX idx_session_scorers      ON session_scorers(session_id);
 CREATE INDEX idx_session_players_sess ON session_players(session_id);
 CREATE INDEX idx_session_players_play ON session_players(player_id);
+CREATE INDEX idx_session_players_reg  ON session_players(registration_id);
 CREATE INDEX idx_score_entries_score  ON score_entries(score_id);
 CREATE INDEX idx_session_blocks_event ON session_blocks(event_id);
+CREATE INDEX idx_scores_registration  ON scores(registration_id);
 
 -- ─────────────────────────────────────────
 -- AUDIT LOG
@@ -346,21 +378,29 @@ INSERT INTO players (first_name, last_name, jersey_number, age_group_id, event_i
   ('Connor',  'Martinez',  14, 1, 1, 'skater'),
   ('Tyler',   'Vogt',      15, 1, 1, 'skater');
 
+INSERT INTO player_event_registrations (player_id, event_id, age_group_id, jersey_number, position, will_tryout)
+SELECT id, event_id, age_group_id, jersey_number, position, will_tryout
+FROM players
+WHERE event_id IS NOT NULL;
+
 -- Auto-assign Mite players to their last-name sessions
 -- Session 1: A-F  → Adams, Brooks, Clark, Davis
 -- Session 2: G-R  → Harris, Kane, Lee, Martinez, Murphy, Parker, Rivera
 -- Session 3: S-Z  → Smith, Thompson, Vogt, Wright
-INSERT INTO session_players (session_id, player_id)
-SELECT 1, p.id FROM players p
+INSERT INTO session_players (session_id, player_id, registration_id)
+SELECT 1, p.id, per.id FROM players p
+JOIN player_event_registrations per ON per.player_id = p.id AND per.event_id = p.event_id
 WHERE p.event_id = 1 AND p.age_group_id = 1
   AND UPPER(LEFT(p.last_name, 1)) BETWEEN 'A' AND 'F';
 
-INSERT INTO session_players (session_id, player_id)
-SELECT 2, p.id FROM players p
+INSERT INTO session_players (session_id, player_id, registration_id)
+SELECT 2, p.id, per.id FROM players p
+JOIN player_event_registrations per ON per.player_id = p.id AND per.event_id = p.event_id
 WHERE p.event_id = 1 AND p.age_group_id = 1
   AND UPPER(LEFT(p.last_name, 1)) BETWEEN 'G' AND 'R';
 
-INSERT INTO session_players (session_id, player_id)
-SELECT 3, p.id FROM players p
+INSERT INTO session_players (session_id, player_id, registration_id)
+SELECT 3, p.id, per.id FROM players p
+JOIN player_event_registrations per ON per.player_id = p.id AND per.event_id = p.event_id
 WHERE p.event_id = 1 AND p.age_group_id = 1
   AND UPPER(LEFT(p.last_name, 1)) BETWEEN 'S' AND 'Z';

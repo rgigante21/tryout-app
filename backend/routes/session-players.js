@@ -8,6 +8,7 @@ const express = require('express');
 const pool    = require('../db/pool');
 const { authMiddleware, requireRole } = require('../middleware/auth');
 const { logAudit } = require('../utils/audit');
+const { resolveRegistrationForSession } = require('../utils/registrations');
 
 const router = express.Router();
 
@@ -81,15 +82,17 @@ router.patch('/move', authMiddleware, requireRole('admin', 'coordinator'), async
     const checkedInAt    = keepCheckinStatus ? srcRecord.checked_in_at : null;
     const attendanceStat = keepCheckinStatus ? srcRecord.attendance_status : null;
 
+    const registrationId = srcRecord.registration_id || await resolveRegistrationForSession(client, fromSessionId, playerId);
     const insertRes = await client.query(
-      `INSERT INTO session_players (session_id, player_id, checked_in, checked_in_at, attendance_status)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO session_players (session_id, player_id, registration_id, checked_in, checked_in_at, attendance_status)
+       VALUES ($1, $2, $3, $4, $5, $6)
        ON CONFLICT (session_id, player_id) DO UPDATE
-         SET checked_in        = EXCLUDED.checked_in,
+         SET registration_id   = COALESCE(EXCLUDED.registration_id, session_players.registration_id),
+             checked_in        = EXCLUDED.checked_in,
              checked_in_at     = EXCLUDED.checked_in_at,
              attendance_status = EXCLUDED.attendance_status
        RETURNING *`,
-      [toSessionId, playerId, checkedIn, checkedInAt, attendanceStat]
+      [toSessionId, playerId, registrationId, checkedIn, checkedInAt, attendanceStat]
     );
 
     await logAudit('player_moved', req.user.id, {
