@@ -588,8 +588,27 @@ export default function Admin() {
     try {
       await api.archiveEvent(id, true);
       const ev = await api.events();
-      setEvents(ev.events);
+      const nextEvents = ev.events || [];
+      const remainingEvents = nextEvents.filter((event) => !event.archived);
+      setEvents(nextEvents);
+      setViewingEventId((current) => (current === id ? null : current));
+      setEventStats((current) => (current?.event?.id === id ? null : current));
+      if (String(selectedEventId) === String(id)) {
+        setSelectedEventId(remainingEvents[0] ? String(remainingEvents[0].id) : '');
+      }
       setEventMsg({ type: 'success', text: 'Event archived.' });
+    } catch (err) {
+      setEventMsg({ type: 'error', text: err.message });
+    }
+  };
+
+  const restoreEvent = async (id) => {
+    try {
+      await api.archiveEvent(id, false);
+      const r = await api.events();
+      setEvents(r.events || []);
+      setSelectedEventId(String(id));
+      setEventMsg({ type: 'success', text: 'Event restored.' });
     } catch (err) {
       setEventMsg({ type: 'error', text: err.message });
     }
@@ -713,7 +732,7 @@ export default function Admin() {
             <h2 style={A.pageTitle}>{pageTitle}</h2>
           </div>
           <div style={A.topbarRight}>
-            {availableEvents.length > 1 && (
+            {(availableEvents.length > 1 || (route.view === 'events' && availableEvents.length > 0)) && (
               <select
                 value={activeEvent ? String(activeEvent.id) : ''}
                 onChange={(e) => setSelectedEventId(e.target.value)}
@@ -856,11 +875,7 @@ export default function Admin() {
               loadEventStats={loadEventStats}
               eventMsg={eventMsg}
               setSelectedEventId={setSelectedEventId}
-              restoreEvent={async (id) => {
-                await api.archiveEvent(id, false);
-                const r = await api.events();
-                setEvents(r.events);
-              }}
+              restoreEvent={restoreEvent}
               allSessions={allSessions}
               sessLoading={sessLoading}
               ageGroups={ageGroups}

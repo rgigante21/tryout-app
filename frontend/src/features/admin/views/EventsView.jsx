@@ -320,6 +320,36 @@ export default function EventsView({
       )}
 
       {currentEvents.length > 0 && (
+        <div style={{ ...A.card, marginBottom: 16, padding: '14px 16px' }}>
+          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text3)', marginBottom: 6 }}>
+            Event Switcher
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>
+                {activeEvent ? activeEvent.name : 'Select an event'}
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 2 }}>
+                Switch between active tryouts without relying on the top bar.
+              </div>
+            </div>
+            <select
+              value={activeEvent ? String(activeEvent.id) : ''}
+              onChange={(e) => setSelectedEventId(e.target.value)}
+              style={{ ...A.toolbarSelect, minWidth: 260 }}
+              aria-label="Switch events"
+            >
+              {currentEvents.map((event) => (
+                <option key={event.id} value={event.id}>
+                  {event.name} ({event.season})
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      )}
+
+      {currentEvents.length > 0 && (
         <>
           <div style={{ ...A.sectionLabel, marginBottom: 10 }}>Current Events</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
@@ -345,7 +375,7 @@ export default function EventsView({
                           </span>
                         )}
                       </div>
-                      <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 4 }}>{ev.name}</div>
+                      <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--text)', marginBottom: 4 }}>{ev.name}</div>
                       <div style={{ fontSize: 13, color: 'var(--text3)', lineHeight: 1.5 }}>
                         {ev.season} · {fmt.date(ev.start_date)} → {fmt.date(ev.end_date)}
                       </div>
@@ -374,7 +404,7 @@ export default function EventsView({
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text3)', marginBottom: 4 }}>Planning Calendar</div>
-                <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 4 }}>{activeEvent.name}</div>
+                <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--text)', marginBottom: 4 }}>{activeEvent.name}</div>
                 <div style={{ fontSize: 13, color: 'var(--text3)', lineHeight: 1.5 }}>
                   {activeEvent.season} · {fmt.date(activeEvent.start_date)} → {fmt.date(activeEvent.end_date)}
                 </div>
@@ -441,7 +471,7 @@ export default function EventsView({
             <div key={ev.id} style={{ ...A.card, marginBottom: 10 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 15, fontWeight: 600 }}>{ev.name}</div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>{ev.name}</div>
                   <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 2, lineHeight: 1.5 }}>
                     {ev.season} · Archived {fmt.date(ev.archived_at)}
                   </div>
