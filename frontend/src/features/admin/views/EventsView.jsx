@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { A } from '../styles';
-import { fmt, BlockWizardPanel, STATUS_META } from '../shared';
+import { fmt, STATUS_META } from '../shared';
 
 const TODAY = new Date().toISOString().slice(0, 10);
 
@@ -10,6 +10,15 @@ function pad(n) {
 
 function toDateStr(year, month, day) {
   return `${year}-${pad(month + 1)}-${pad(day)}`;
+}
+
+function inclusiveDaySpan(startDate, endDate) {
+  if (!startDate || !endDate) return null;
+  const start = new Date(`${String(startDate).slice(0, 10)}T12:00:00`);
+  const end = new Date(`${String(endDate).slice(0, 10)}T12:00:00`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
+  const diff = Math.round((end.getTime() - start.getTime()) / 86400000);
+  return diff >= 0 ? diff + 1 : null;
 }
 
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June',
@@ -26,108 +35,157 @@ function buildCalendarCells(year, month) {
   return cells;
 }
 
-function EventCalendar({ activeEvent, allSessions, selectedDate, setSelectedDate, calYear, calMonth, setCalYear, setCalMonth }) {
+function EventMetric({ label, value, accent = 'gold' }) {
+  return (
+    <div style={{ ...A.eventMetricCard, borderColor: accent === 'blue' ? 'rgba(90,141,238,0.3)' : 'rgba(240,180,41,0.25)' }}>
+      <div style={A.eventMetricLabel}>{label}</div>
+      <div style={A.eventMetricValue}>{value}</div>
+    </div>
+  );
+}
+
+function EventArchiveMenu({ archivedEvents, onSelectArchivedEvent }) {
+  const menuRef = useRef(null);
+
+  if (!archivedEvents.length) return null;
+
+  return (
+    <details ref={menuRef} className="events-archive-menu">
+      <summary style={A.eventMenuTrigger}>Archived Tryouts</summary>
+      <div style={A.eventMenuPanel}>
+        <div style={A.eventMenuTitle}>Past tryouts</div>
+        <div style={A.eventMenuHint}>Open an archived event in read-only mode.</div>
+        <div style={A.eventMenuList}>
+          {archivedEvents.map((event) => (
+            <button
+              key={event.id}
+              type="button"
+              onClick={() => {
+                onSelectArchivedEvent(event.id);
+                if (menuRef.current) menuRef.current.open = false;
+              }}
+              style={A.eventMenuItem}
+            >
+              <span>
+                <span style={A.eventMenuItemTitle}>{event.name}</span>
+                <span style={A.eventMenuItemMeta}>
+                  {event.season} · Archived {fmt.date(event.archived_at)}
+                </span>
+              </span>
+              <span style={A.eventMenuItemArrow}>↗</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </details>
+  );
+}
+
+function EventCalendar({
+  viewedEvent,
+  allSessions,
+  selectedDate,
+  setSelectedDate,
+  calYear,
+  calMonth,
+  setCalYear,
+  setCalMonth,
+}) {
   const cells = buildCalendarCells(calYear, calMonth);
 
   const sessionsByDate = {};
-  allSessions.forEach((s) => {
-    const d = String(s.session_date).slice(0, 10);
-    if (!sessionsByDate[d]) sessionsByDate[d] = [];
-    sessionsByDate[d].push(s);
+  allSessions.forEach((session) => {
+    const date = String(session.session_date).slice(0, 10);
+    if (!sessionsByDate[date]) sessionsByDate[date] = [];
+    sessionsByDate[date].push(session);
   });
 
-  const eventStart = activeEvent?.start_date ? String(activeEvent.start_date).slice(0, 10) : null;
-  const eventEnd = activeEvent?.end_date ? String(activeEvent.end_date).slice(0, 10) : null;
+  const eventStart = viewedEvent?.start_date ? String(viewedEvent.start_date).slice(0, 10) : null;
+  const eventEnd = viewedEvent?.end_date ? String(viewedEvent.end_date).slice(0, 10) : null;
 
   const prevMonth = () => {
-    if (calMonth === 0) { setCalYear((y) => y - 1); setCalMonth(11); }
-    else setCalMonth((m) => m - 1);
+    if (calMonth === 0) {
+      setCalYear((year) => year - 1);
+      setCalMonth(11);
+    } else {
+      setCalMonth((month) => month - 1);
+    }
   };
+
   const nextMonth = () => {
-    if (calMonth === 11) { setCalYear((y) => y + 1); setCalMonth(0); }
-    else setCalMonth((m) => m + 1);
+    if (calMonth === 11) {
+      setCalYear((year) => year + 1);
+      setCalMonth(0);
+    } else {
+      setCalMonth((month) => month + 1);
+    }
   };
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-        <button onClick={prevMonth} style={{ ...A.ghostBtn, minWidth: 40, padding: 0, fontSize: 14 }}>‹</button>
+      <div style={A.eventCalendarToolbar}>
+        <button onClick={prevMonth} style={{ ...A.ghostBtn, minWidth: 42, padding: 0, fontSize: 14 }}>‹</button>
         <div style={{ flex: 1, textAlign: 'center' }}>
-          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--text3)', marginBottom: 2 }}>
-            Calendar
-          </div>
-          <div style={{ fontWeight: 700, fontSize: 16, color: 'var(--text)' }}>
-          {MONTH_NAMES[calMonth]} {calYear}
-          </div>
+          <div style={A.eventMiniLabel}>Calendar</div>
+          <div style={A.eventCalendarMonth}>{MONTH_NAMES[calMonth]} {calYear}</div>
         </div>
-        <button onClick={nextMonth} style={{ ...A.ghostBtn, minWidth: 40, padding: 0, fontSize: 14 }}>›</button>
+        <button onClick={nextMonth} style={{ ...A.ghostBtn, minWidth: 42, padding: 0, fontSize: 14 }}>›</button>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 1, marginBottom: 1 }}>
-        {DAY_HEADERS.map((h) => (
-          <div key={h} style={{ textAlign: 'center', fontSize: 11, fontWeight: 700, color: 'var(--text3)', padding: '7px 0', background: 'var(--bg3)' }}>
-            {h}
+      <div className="events-calendar-grid events-calendar-head">
+        {DAY_HEADERS.map((header) => (
+          <div key={header} style={A.eventCalendarHeadCell}>
+            {header}
           </div>
         ))}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 1, background: 'var(--border)' }}>
+      <div className="events-calendar-grid" style={A.eventCalendarGrid}>
         {cells.map((day, idx) => {
           if (!day) {
-            return <div key={idx} style={{ background: 'var(--bg3)', minHeight: 72 }} />;
+            return <div key={idx} style={A.eventCalendarBlankCell} />;
           }
+
           const dateStr = toDateStr(calYear, calMonth, day);
           const daySessions = sessionsByDate[dateStr] || [];
           const isSelected = selectedDate === dateStr;
           const isToday = dateStr === TODAY;
           const inRange = eventStart && eventEnd ? (dateStr >= eventStart && dateStr <= eventEnd) : true;
-
-          const skillsCount = daySessions.filter((s) => s.session_type !== 'game').length;
-          const gamesCount = daySessions.filter((s) => s.session_type === 'game').length;
+          const skillsCount = daySessions.filter((session) => session.session_type !== 'game').length;
+          const gamesCount = daySessions.filter((session) => session.session_type === 'game').length;
 
           return (
-            <div
+            <button
               key={idx}
+              type="button"
               onClick={() => setSelectedDate(isSelected ? null : dateStr)}
               style={{
-                background: isSelected ? 'var(--maroon-bg)' : isToday ? 'var(--blue-bg)' : 'var(--bg)',
-                minHeight: 78,
-                padding: 8,
-                cursor: 'pointer',
-                border: isSelected ? '2px solid var(--maroon)' : '2px solid transparent',
-                position: 'relative',
-                opacity: inRange ? 1 : 0.45,
+                ...A.eventCalendarCell,
+                background: isSelected ? 'rgba(107,30,46,0.12)' : isToday ? 'rgba(90,141,238,0.12)' : 'rgba(255,255,255,0.88)',
+                borderColor: isSelected ? 'var(--maroon)' : isToday ? 'rgba(90,141,238,0.45)' : 'rgba(213,206,196,0.7)',
+                opacity: inRange ? 1 : 0.38,
+                boxShadow: isSelected ? '0 14px 26px rgba(107,30,46,0.16)' : 'none',
               }}
             >
               <div style={{
-                fontSize: 12,
-                fontWeight: isToday ? 700 : 500,
-                color: isSelected ? 'var(--maroon-txt)' : isToday ? 'var(--blue-txt)' : 'var(--text)',
-                marginBottom: 4,
+                ...A.eventCalendarDayNumber,
+                color: isSelected ? 'var(--maroon)' : isToday ? 'var(--blue-txt)' : 'var(--text)',
               }}>
                 {day}
               </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
+              <div style={A.eventCalendarBadges}>
                 {skillsCount > 0 && (
-                  <span style={{
-                    fontSize: 10, borderRadius: 8, padding: '1px 5px',
-                    background: 'var(--blue-bg)', color: 'var(--blue-txt)',
-                    border: '1px solid var(--blue)', fontWeight: 600,
-                  }}>
-                    🏒{skillsCount > 1 ? ` ×${skillsCount}` : ''}
+                  <span style={{ ...A.eventCalendarBadge, background: 'var(--blue-bg)', color: 'var(--blue-txt)', borderColor: 'rgba(90,141,238,0.28)' }}>
+                    Skills {skillsCount > 1 ? `×${skillsCount}` : ''}
                   </span>
                 )}
                 {gamesCount > 0 && (
-                  <span style={{
-                    fontSize: 10, borderRadius: 8, padding: '1px 5px',
-                    background: 'var(--amber-bg)', color: 'var(--amber-txt)',
-                    border: '1px solid var(--amber)', fontWeight: 600,
-                  }}>
-                    🥅{gamesCount > 1 ? ` ×${gamesCount}` : ''}
+                  <span style={{ ...A.eventCalendarBadge, background: 'var(--amber-bg)', color: 'var(--amber-txt)', borderColor: 'rgba(231,180,76,0.38)' }}>
+                    Games {gamesCount > 1 ? `×${gamesCount}` : ''}
                   </span>
                 )}
               </div>
-            </div>
+            </button>
           );
         })}
       </div>
@@ -135,77 +193,80 @@ function EventCalendar({ activeEvent, allSessions, selectedDate, setSelectedDate
   );
 }
 
-function DayDetail({ selectedDate, allSessions, onAddBlock }) {
+function DayDetail({ selectedDate, allSessions, readOnly }) {
   if (!selectedDate) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', padding: '32px 16px', textAlign: 'center' }}>
-        <div style={{ fontSize: 28, marginBottom: 10 }}>📅</div>
-        <div style={{ fontSize: 13, color: 'var(--text3)', maxWidth: 200 }}>
-          Select a date to view sessions
+      <div style={A.eventDetailEmpty}>
+        <div style={A.eventEmptyIcon}>◌</div>
+        <div style={A.eventEmptyTitle}>Pick a day</div>
+        <div style={A.eventEmptyCopy}>
+          Select a date from the calendar to review the session plan{readOnly ? ' for this archived tryout.' : ' or add a new block.'}
         </div>
       </div>
     );
   }
 
-  const [y, m, d] = selectedDate.split('-');
   const dateLabel = new Date(`${selectedDate}T12:00:00`).toLocaleDateString('en-US', {
-    weekday: 'long', month: 'long', day: 'numeric',
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
   });
 
-  const daySessions = allSessions.filter((s) => String(s.session_date).slice(0, 10) === selectedDate);
+  const daySessions = allSessions.filter((session) => String(session.session_date).slice(0, 10) === selectedDate);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14, gap: 12, flexWrap: 'wrap' }}>
+      <div style={A.eventDetailHeader}>
         <div>
-          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text3)', marginBottom: 4 }}>
-            Day Plan
-          </div>
-          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>{dateLabel}</div>
-          <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
-            {daySessions.length === 0 ? 'No sessions' : `${daySessions.length} session${daySessions.length > 1 ? 's' : ''}`}
+          <div style={A.eventMiniLabel}>Day Plan</div>
+          <div style={A.eventDetailTitle}>{dateLabel}</div>
+          <div style={A.eventDetailMeta}>
+            {daySessions.length === 0 ? 'No sessions scheduled' : `${daySessions.length} session${daySessions.length > 1 ? 's' : ''}`}
           </div>
         </div>
-        <button onClick={() => onAddBlock(selectedDate)} style={A.primaryBtn}>
-          + Session Block
-        </button>
       </div>
 
       {daySessions.length === 0 ? (
-        <div style={{ fontSize: 12, color: 'var(--text3)', padding: '16px 0' }}>
-          No sessions on this date.
+        <div style={A.eventDetailEmptyState}>
+          {readOnly ? 'No sessions were scheduled on this date.' : 'No sessions on this date yet.'}
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, overflowY: 'auto' }}>
-          {daySessions.map((sess) => {
-            const sm = STATUS_META[sess.status] || STATUS_META.pending;
-            const isGame = sess.session_type === 'game';
+        <div style={A.eventDaySessionList}>
+          {daySessions.map((session) => {
+            const statusMeta = STATUS_META[session.status] || STATUS_META.pending;
+            const isGame = session.session_type === 'game';
             return (
-              <div key={sess.id} style={{ ...A.card, padding: '14px 16px', marginBottom: 0 }}>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
-                  <span style={{
-                    fontSize: 11, borderRadius: 6, padding: '2px 7px', fontWeight: 600,
-                    background: isGame ? 'var(--amber-bg)' : 'var(--blue-bg)',
-                    color: isGame ? 'var(--amber-txt)' : 'var(--blue-txt)',
-                    border: `1px solid ${isGame ? 'var(--amber)' : 'var(--blue)'}`,
-                  }}>
-                    {isGame ? '🥅 Game' : '🏒 Skills'}
+              <div key={session.id} style={A.eventDaySessionCard}>
+                <div style={A.eventDaySessionBadges}>
+                  <span
+                    style={{
+                      ...A.eventDaySessionBadge,
+                      background: isGame ? 'var(--amber-bg)' : 'var(--blue-bg)',
+                      color: isGame ? 'var(--amber-txt)' : 'var(--blue-txt)',
+                      borderColor: isGame ? 'rgba(231,180,76,0.34)' : 'rgba(90,141,238,0.28)',
+                    }}
+                  >
+                    {isGame ? 'Game' : 'Skills'}
                   </span>
-                  {sess.age_group && (
-                    <span style={{ fontSize: 11, borderRadius: 6, padding: '2px 7px', background: 'var(--bg3)', color: 'var(--text2)', border: '1px solid var(--border)', fontWeight: 600 }}>
-                      {sess.age_group}
-                    </span>
-                  )}
-                  <span style={{ fontSize: 11, borderRadius: 6, padding: '2px 7px', background: sm.bg, color: sm.textColor, border: `1px solid ${sm.border}`, fontWeight: 600, marginLeft: 'auto' }}>
-                    {sm.label}
+                  {session.age_group && <span style={A.eventDaySessionBadgeMuted}>{session.age_group}</span>}
+                  <span
+                    style={{
+                      ...A.eventDaySessionBadge,
+                      marginLeft: 'auto',
+                      background: statusMeta.bg,
+                      color: statusMeta.textColor,
+                      borderColor: statusMeta.border,
+                    }}
+                  >
+                    {statusMeta.label}
                   </span>
                 </div>
-                <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>{sess.name}</div>
-                <div style={{ fontSize: 12, color: 'var(--text3)', lineHeight: 1.5 }}>
-                  {sess.start_time ? fmt.time(sess.start_time) : 'No time set'}
-                  {' · '}<strong>{sess.player_count || 0}</strong> players
-                  {sess.last_name_start && sess.last_name_end ? ` · ${sess.last_name_start}–${sess.last_name_end}` : ''}
-                  {sess.home_team && sess.away_team ? ` · T${sess.home_team} vs T${sess.away_team}` : ''}
+                <div style={A.eventDaySessionTitle}>{session.name}</div>
+                <div style={A.eventDaySessionMeta}>
+                  {session.start_time ? fmt.time(session.start_time) : 'No time set'}
+                  {' · '}<strong>{session.player_count || 0}</strong> players
+                  {session.last_name_start && session.last_name_end ? ` · ${session.last_name_start}–${session.last_name_end}` : ''}
+                  {session.home_team && session.away_team ? ` · T${session.home_team} vs T${session.away_team}` : ''}
                 </div>
               </div>
             );
@@ -217,209 +278,210 @@ function DayDetail({ selectedDate, allSessions, onAddBlock }) {
 }
 
 export default function EventsView({
-  events,
+  currentEvents = [],
+  archivedEvents = [],
   activeEvent,
+  viewedEvent,
+  isArchivedView,
   newEvent,
   setNewEvent,
   showCreateEvent,
   createEvent,
   creatingEvent,
   archiveEvent,
-  eventStats,
-  viewingEventId,
-  loadEventStats,
   eventMsg,
-  setSelectedEventId,
+  selectCurrentEvent,
+  selectArchivedEvent,
+  returnToCurrentEvent,
   restoreEvent,
   allSessions = [],
   sessLoading,
-  ageGroups = [],
-  showBlockWizard,
-  setShowBlockWizard,
-  blockWizard,
-  setBlockWizard,
-  updateSlot,
-  addSlot,
-  removeSlot,
-  updateTeam,
-  updateGame,
-  createBlock,
-  creatingBlock,
-  blockMsg,
-  wizardAgeGroupId,
-  setWizardAgeGroupId,
 }) {
   const now = new Date();
   const [calYear, setCalYear] = useState(now.getFullYear());
   const [calMonth, setCalMonth] = useState(now.getMonth());
   const [selectedDate, setSelectedDate] = useState(null);
 
-  const currentEvents = events.filter((e) => !e.archived);
-  const archivedEvents = events.filter((e) => e.archived);
   const hasAnything = currentEvents.length > 0 || archivedEvents.length > 0;
-
-  const handleAddBlock = (date) => {
-    setBlockWizard((w) => ({ ...w, date }));
-    setShowBlockWizard(true);
-  };
+  const uniqueSessionDates = [...new Set(allSessions.map((session) => String(session.session_date).slice(0, 10)))];
+  const skillsCount = allSessions.filter((session) => session.session_type !== 'game').length;
+  const gamesCount = allSessions.filter((session) => session.session_type === 'game').length;
+  const spanDays = inclusiveDaySpan(viewedEvent?.start_date, viewedEvent?.end_date);
 
   useEffect(() => {
     setSelectedDate(null);
-    if (!activeEvent?.start_date) return;
-    const start = new Date(`${String(activeEvent.start_date).slice(0, 10)}T12:00:00`);
+    if (!viewedEvent?.start_date) return;
+    const start = new Date(`${String(viewedEvent.start_date).slice(0, 10)}T12:00:00`);
     if (Number.isNaN(start.getTime())) return;
     setCalYear(start.getFullYear());
     setCalMonth(start.getMonth());
-  }, [activeEvent]);
+  }, [viewedEvent]);
 
   return (
-    <div>
+    <div className="events-view-shell">
       {eventMsg.text && (
         <div style={eventMsg.type === 'success' ? A.successBox : A.errorBox}>{eventMsg.text}</div>
       )}
 
       {!hasAnything && !showCreateEvent && (
-        <div style={{ textAlign: 'center', padding: '64px 24px' }}>
-          <div style={{ fontSize: 40, marginBottom: 16 }}>📅</div>
-          <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--text)', marginBottom: 8 }}>No events yet</div>
-          <div style={{ fontSize: 13, color: 'var(--text3)', maxWidth: 320, margin: '0 auto' }}>
-            Events organize your tryout season. Create one to start adding age groups, sessions, and players.
+        <div style={A.eventsEmptyState}>
+          <div style={A.eventsHeroEyebrow}>Tryout Calendar</div>
+          <div style={A.eventsEmptyHeadline}>No events on the board yet</div>
+          <div style={A.eventsEmptyCopy}>
+            Create an event to start mapping tryout dates, session blocks, players, and scoring windows.
           </div>
         </div>
       )}
 
       {showCreateEvent && (
-        <div style={{ ...A.card, marginBottom: 16 }}>
-          <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 14, color: 'var(--text)' }}>New Event</div>
+        <div style={A.eventsCreateCard}>
+          <div style={A.eventsPanelEyebrow}>Build a New Tryout Window</div>
+          <div style={A.eventsCreateTitle}>New Event</div>
+          <div style={A.eventsCreateCopy}>Set the season frame first. The planner will use these dates to anchor the calendar immediately.</div>
           <div style={A.formRow}>
             <div style={{ flex: 2 }}>
               <label style={A.fieldLabel}>Event name</label>
-              <input placeholder="e.g. Fall Tryouts 2027" value={newEvent.name} onChange={(e) => setNewEvent((n) => ({ ...n, name: e.target.value }))} />
+              <input
+                placeholder="e.g. Fall Tryouts 2027"
+                value={newEvent.name}
+                onChange={(e) => setNewEvent((event) => ({ ...event, name: e.target.value }))}
+              />
             </div>
             <div style={{ flex: 1 }}>
               <label style={A.fieldLabel}>Season</label>
-              <input placeholder="2026-2027" value={newEvent.season} onChange={(e) => setNewEvent((n) => ({ ...n, season: e.target.value }))} />
+              <input
+                placeholder="2026-2027"
+                value={newEvent.season}
+                onChange={(e) => setNewEvent((event) => ({ ...event, season: e.target.value }))}
+              />
             </div>
           </div>
           <div style={{ ...A.formRow, marginTop: 10 }}>
             <div style={{ flex: 1 }}>
               <label style={A.fieldLabel}>Start date</label>
-              <input type="date" value={newEvent.startDate} onChange={(e) => setNewEvent((n) => ({ ...n, startDate: e.target.value }))} />
+              <input
+                type="date"
+                value={newEvent.startDate}
+                onChange={(e) => setNewEvent((event) => ({ ...event, startDate: e.target.value }))}
+              />
             </div>
             <div style={{ flex: 1 }}>
               <label style={A.fieldLabel}>End date</label>
-              <input type="date" value={newEvent.endDate} onChange={(e) => setNewEvent((n) => ({ ...n, endDate: e.target.value }))} />
+              <input
+                type="date"
+                value={newEvent.endDate}
+                onChange={(e) => setNewEvent((event) => ({ ...event, endDate: e.target.value }))}
+              />
             </div>
           </div>
-          <div style={{ marginTop: 12 }}>
-            <button onClick={createEvent} disabled={creatingEvent || !newEvent.name || !newEvent.season || !newEvent.startDate || !newEvent.endDate} style={A.saveBtn}>
+          <div style={{ marginTop: 14 }}>
+            <button
+              onClick={createEvent}
+              disabled={creatingEvent || !newEvent.name || !newEvent.season || !newEvent.startDate || !newEvent.endDate}
+              style={A.saveBtn}
+            >
               {creatingEvent ? 'Creating…' : 'Create Event'}
             </button>
           </div>
         </div>
       )}
 
-      {currentEvents.length > 0 && (
-        <div style={{ ...A.card, marginBottom: 16, padding: '14px 16px' }}>
-          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text3)', marginBottom: 6 }}>
-            Event Switcher
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>
-                {activeEvent ? activeEvent.name : 'Select an event'}
-              </div>
-              <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 2 }}>
-                Switch between active tryouts without relying on the top bar.
-              </div>
-            </div>
-            <select
-              value={activeEvent ? String(activeEvent.id) : ''}
-              onChange={(e) => setSelectedEventId(e.target.value)}
-              style={{ ...A.toolbarSelect, minWidth: 260 }}
-              aria-label="Switch events"
-            >
-              {currentEvents.map((event) => (
-                <option key={event.id} value={event.id}>
-                  {event.name} ({event.season})
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-      )}
-
-      {currentEvents.length > 0 && (
+      {viewedEvent && (
         <>
-          <div style={{ ...A.sectionLabel, marginBottom: 10 }}>Current Events</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
-            {currentEvents.map((ev) => {
-              const isSelected = activeEvent?.id === ev.id;
-              return (
-                <div
-                  key={ev.id}
-                  style={{
-                    ...A.card,
-                    marginBottom: 0,
-                    borderColor: isSelected ? 'var(--gold-dark)' : 'var(--border)',
-                    background: isSelected ? 'var(--gold-bg)' : '#fff',
-                    padding: '16px 18px',
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
-                        {isSelected && (
-                          <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--gold-txt)' }}>
-                            Selected
-                          </span>
-                        )}
-                      </div>
-                      <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--text)', marginBottom: 4 }}>{ev.name}</div>
-                      <div style={{ fontSize: 13, color: 'var(--text3)', lineHeight: 1.5 }}>
-                        {ev.season} · {fmt.date(ev.start_date)} → {fmt.date(ev.end_date)}
-                      </div>
-                    </div>
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginLeft: 'auto' }}>
-                      {!isSelected && (
-                        <button onClick={() => setSelectedEventId(String(ev.id))} style={A.primaryBtn}>
-                          Open
-                        </button>
-                      )}
-                      <button onClick={() => archiveEvent(ev.id)} style={{ ...A.ghostBtn, borderColor: 'var(--red)', color: 'var(--red-txt)' }}>
-                        Archive
-                      </button>
-                    </div>
+          <section style={A.eventsHero}>
+            <div style={A.eventsHeroBackdrop} />
+            <div style={A.eventsHeroMain}>
+              <div style={A.eventsHeroHeaderRow}>
+                <div>
+                  <div style={A.eventsHeroEyebrow}>{isArchivedView ? 'Archived Tryout Review' : 'Current Tryout Window'}</div>
+                  <div style={A.eventsHeroTitleRow}>
+                    <h3 style={A.eventsHeroTitle}>{viewedEvent.name}</h3>
+                    <span
+                      style={{
+                        ...A.eventsHeroBadge,
+                        background: isArchivedView ? 'rgba(107,30,46,0.14)' : 'rgba(240,180,41,0.18)',
+                        color: isArchivedView ? 'var(--maroon)' : '#5f4307',
+                        borderColor: isArchivedView ? 'rgba(107,30,46,0.2)' : 'rgba(240,180,41,0.26)',
+                      }}
+                    >
+                      {isArchivedView ? 'Read-only archive' : 'Live planning'}
+                    </span>
+                  </div>
+                  <div style={A.eventsHeroMeta}>
+                    <span>{viewedEvent.season}</span>
+                    <span>·</span>
+                    <span>{fmt.date(viewedEvent.start_date)} to {fmt.date(viewedEvent.end_date)}</span>
+                    {isArchivedView && viewedEvent.archived_at && (
+                      <>
+                        <span>·</span>
+                        <span>Archived {fmt.date(viewedEvent.archived_at)}</span>
+                      </>
+                    )}
                   </div>
                 </div>
-              );
-            })}
-          </div>
-        </>
-      )}
 
-      {activeEvent && (
-        <>
-          <div style={{ ...A.card, borderColor: 'var(--gold-dark)', marginBottom: 12 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text3)', marginBottom: 4 }}>Planning Calendar</div>
-                <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--text)', marginBottom: 4 }}>{activeEvent.name}</div>
-                <div style={{ fontSize: 13, color: 'var(--text3)', lineHeight: 1.5 }}>
-                  {activeEvent.season} · {fmt.date(activeEvent.start_date)} → {fmt.date(activeEvent.end_date)}
+                <div style={A.eventsHeroControls}>
+                  {currentEvents.length > 1 && (
+                    <label style={A.eventsControlGroup}>
+                      <span style={A.eventsControlLabel}>Current event</span>
+                      <select
+                        value={activeEvent ? String(activeEvent.id) : ''}
+                        onChange={(e) => selectCurrentEvent(e.target.value)}
+                        style={{ ...A.toolbarSelect, minWidth: 220 }}
+                      >
+                        {currentEvents.map((event) => (
+                          <option key={event.id} value={event.id}>
+                            {event.name} ({event.season})
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+
+                  <EventArchiveMenu archivedEvents={archivedEvents} onSelectArchivedEvent={selectArchivedEvent} />
+
+                  {isArchivedView && activeEvent && (
+                    <button onClick={returnToCurrentEvent} style={A.ghostBtn}>
+                      Return to Current
+                    </button>
+                  )}
+
+                  {isArchivedView ? (
+                    <button onClick={() => restoreEvent(viewedEvent.id)} style={A.primaryBtn}>
+                      Restore Event
+                    </button>
+                  ) : (
+                    <button onClick={() => archiveEvent(viewedEvent.id)} style={{ ...A.ghostBtn, borderColor: 'var(--red)', color: 'var(--red-txt)' }}>
+                      Archive
+                    </button>
+                  )}
                 </div>
               </div>
-              <button onClick={() => archiveEvent(activeEvent.id)} style={{ ...A.ghostBtn, borderColor: 'var(--red)', color: 'var(--red-txt)' }}>
-                Archive
-              </button>
-            </div>
-          </div>
 
-          {/* Calendar + day detail */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(320px, 420px) minmax(0, 1fr)', gap: 12, marginBottom: 16, alignItems: 'flex-start' }}>
-            <div style={{ ...A.card, marginBottom: 0, padding: 14 }}>
+              <div style={A.eventsHeroMetrics}>
+                <EventMetric label="Event span" value={spanDays ? `${spanDays} day${spanDays > 1 ? 's' : ''}` : 'TBD'} />
+                <EventMetric label="Scheduled days" value={uniqueSessionDates.length || 0} accent="blue" />
+                <EventMetric label="Sessions" value={allSessions.length || 0} />
+                <EventMetric label="Skills / Games" value={`${skillsCount}/${gamesCount}`} accent="blue" />
+              </div>
+            </div>
+          </section>
+
+          {isArchivedView && (
+            <div style={A.eventsReadOnlyBanner}>
+              You are reviewing an archived tryout. Calendar and day plans are visible, but schedule editing and new block creation are disabled until the event is restored.
+            </div>
+          )}
+
+          <div className="events-planner-grid" style={A.eventsPlannerGrid}>
+            <section style={A.eventsPlannerCard}>
+              <div style={A.eventsPanelEyebrow}>Master Schedule</div>
+              <div style={A.eventsPanelTitle}>Planning Calendar</div>
+              <div style={A.eventsPanelCopy}>
+                Scan the entire tryout window, then open a day to inspect its sessions.
+              </div>
               <EventCalendar
-                activeEvent={activeEvent}
+                viewedEvent={viewedEvent}
                 allSessions={allSessions}
                 selectedDate={selectedDate}
                 setSelectedDate={setSelectedDate}
@@ -429,78 +491,25 @@ export default function EventsView({
                 setCalMonth={setCalMonth}
               />
               {sessLoading && (
-                <div style={{ textAlign: 'center', fontSize: 11, color: 'var(--text3)', marginTop: 8 }}>Loading sessions…</div>
+                <div style={{ textAlign: 'center', fontSize: 11, color: 'var(--text3)', marginTop: 10 }}>Loading sessions…</div>
               )}
-            </div>
+            </section>
 
-            <div style={{ ...A.card, marginBottom: 0, minHeight: 340, padding: 16 }}>
+            <section style={{ ...A.eventsPlannerCard, minHeight: 420 }}>
+              <div style={A.eventsPanelEyebrow}>{isArchivedView ? 'Historical Detail' : 'Day Breakdown'}</div>
+              <div style={A.eventsPanelTitle}>{isArchivedView ? 'Archived Session Plan' : 'Session Board'}</div>
+              <div style={A.eventsPanelCopy}>
+                {isArchivedView
+                  ? 'Review the schedule exactly as it was preserved when the tryout closed.'
+                  : 'Open a date to add a block or inspect how the day is stacked.'}
+              </div>
               <DayDetail
                 selectedDate={selectedDate}
                 allSessions={allSessions}
-                onAddBlock={handleAddBlock}
+                readOnly={isArchivedView}
               />
-            </div>
+            </section>
           </div>
-
-          {/* Block wizard — opens below calendar when triggered */}
-          {showBlockWizard && (
-            <BlockWizardPanel
-              blockWizard={blockWizard}
-              setBlockWizard={setBlockWizard}
-              updateSlot={updateSlot}
-              addSlot={addSlot}
-              removeSlot={removeSlot}
-              updateTeam={updateTeam}
-              updateGame={updateGame}
-              createBlock={createBlock}
-              creatingBlock={creatingBlock}
-              blockMsg={blockMsg}
-              onCancel={() => setShowBlockWizard(false)}
-              ageGroups={ageGroups}
-              wizardAgeGroupId={wizardAgeGroupId}
-              setWizardAgeGroupId={setWizardAgeGroupId}
-            />
-          )}
-        </>
-      )}
-
-      {archivedEvents.length > 0 && (
-        <>
-          <div style={{ ...A.sectionLabel, marginTop: 20 }}>Archived Events</div>
-          {archivedEvents.map((ev) => (
-            <div key={ev.id} style={{ ...A.card, marginBottom: 10 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>{ev.name}</div>
-                  <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 2, lineHeight: 1.5 }}>
-                    {ev.season} · Archived {fmt.date(ev.archived_at)}
-                  </div>
-                </div>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button onClick={() => loadEventStats(ev.id)} style={A.primaryBtn}>
-                    {viewingEventId === ev.id ? 'Hide Stats' : 'View Stats'}
-                  </button>
-                  <button onClick={() => restoreEvent(ev.id)} style={A.ghostBtn}>Restore</button>
-                </div>
-              </div>
-              {viewingEventId === ev.id && eventStats && eventStats.event?.id === ev.id && (
-                <div style={{ marginTop: 14, borderTop: '1px solid var(--border)', paddingTop: 14 }}>
-                  <div style={{ display: 'flex', gap: 24, marginBottom: 12 }}>
-                    {[
-                      { label: 'Players', val: eventStats.totalPlayers },
-                      { label: 'Sessions', val: eventStats.totalSessions },
-                      { label: 'Scores', val: eventStats.totalScores },
-                    ].map(({ label, val }) => (
-                      <div key={label}>
-                        <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--gold)' }}>{val}</div>
-                        <div style={{ fontSize: 11, color: 'var(--text3)' }}>{label}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          ))}
         </>
       )}
     </div>

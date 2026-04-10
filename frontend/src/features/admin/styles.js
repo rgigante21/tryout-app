@@ -91,6 +91,53 @@ export const ADMIN_CSS = `
     50%       { box-shadow: 0 0 0 6px rgba(58, 141, 93, 0); }
   }
   .live-card { animation: liveGlow 2.4s ease-in-out infinite; }
+
+  .events-view-shell {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+
+  .events-archive-menu {
+    position: relative;
+  }
+
+  .events-archive-menu > summary {
+    list-style: none;
+  }
+
+  .events-archive-menu > summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .events-planner-grid {
+    display: grid;
+    grid-template-columns: minmax(320px, 1.05fr) minmax(320px, 0.95fr);
+    gap: 16px;
+    align-items: start;
+  }
+
+  .events-calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .events-calendar-head {
+    margin-bottom: 10px;
+  }
+
+  @media (max-width: 1180px) {
+    .events-planner-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  @media (max-width: 820px) {
+    .events-calendar-grid {
+      gap: 6px;
+    }
+  }
 `;
 
 export const SB = {
@@ -178,8 +225,8 @@ export const A = {
   shell: { display: 'flex', minHeight: '100vh', fontFamily: "'Nunito', sans-serif", background: 'var(--bg)' },
   main: { flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 },
   topbar: {
-    background: '#FFFFFF',
-    borderBottom: '1px solid var(--border)',
+    background: 'linear-gradient(140deg, #471420 0%, #601a2a 48%, #7f4e17 100%)',
+    borderBottom: 'none',
     padding: '14px 28px',
     minHeight: 72,
     display: 'flex',
@@ -190,12 +237,12 @@ export const A = {
     position: 'sticky',
     top: 0,
     zIndex: 10,
-    boxShadow: '0 4px 18px rgba(26,18,18,0.05)',
+    boxShadow: '0 18px 40px rgba(74,19,32,0.18)',
   },
   topbarLeft: { display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, flexWrap: 'wrap' },
   topbarRight: { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' },
-  pageTitle: { fontFamily: "'Barlow Condensed', sans-serif", fontSize: 24, fontWeight: 700, color: '#2D1F1F', letterSpacing: '0.03em' },
-  backLink: { background: 'none', border: 'none', color: 'var(--maroon)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', padding: 0 },
+  pageTitle: { fontFamily: "'Barlow Condensed', sans-serif", fontSize: 24, fontWeight: 700, color: '#FFFFFF', letterSpacing: '0.03em' },
+  backLink: { background: 'none', border: 'none', color: 'rgba(255,255,255,0.82)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', padding: 0 },
   toolbarSelect: {
     minWidth: 240,
     width: 'auto',
@@ -209,18 +256,6 @@ export const A = {
     fontWeight: 700,
     outline: 'none',
     fontFamily: 'inherit',
-  },
-  eventPill: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    minHeight: 40,
-    fontSize: 11,
-    fontWeight: 700,
-    background: '#FDF6E3',
-    border: '1.5px solid var(--gold-dark)',
-    borderRadius: 999,
-    padding: '0 14px',
-    color: '#6B1E2E',
   },
   contentArea: { flex: 1, padding: '28px 28px 72px', overflowY: 'auto' },
   muted: { fontSize: 13, color: 'var(--text3)', padding: '8px 0', fontWeight: 500 },
@@ -293,6 +328,481 @@ export const A = {
   },
   sectionHdr: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   sectionLabel: { fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#6B1E2E' },
+  eventsEmptyState: {
+    background: 'linear-gradient(135deg, rgba(74,19,32,0.98) 0%, rgba(107,30,46,0.92) 55%, rgba(181,131,22,0.82) 100%)',
+    borderRadius: 24,
+    padding: '54px 32px',
+    color: '#fff',
+    boxShadow: '0 22px 50px rgba(74,19,32,0.24)',
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  eventsEmptyHeadline: {
+    fontFamily: "'Barlow Condensed', sans-serif",
+    fontSize: 42,
+    lineHeight: 1,
+    marginBottom: 12,
+    letterSpacing: '0.02em',
+  },
+  eventsEmptyCopy: {
+    maxWidth: 560,
+    fontSize: 15,
+    lineHeight: 1.7,
+    color: 'rgba(255,255,255,0.82)',
+  },
+  eventsHero: {
+    position: 'relative',
+    overflow: 'hidden',
+    borderRadius: 28,
+    padding: '28px 28px 26px',
+    background: 'linear-gradient(140deg, #471420 0%, #601a2a 48%, #7f4e17 100%)',
+    color: '#fff',
+    boxShadow: '0 24px 56px rgba(74,19,32,0.22)',
+  },
+  eventsHeroBackdrop: {
+    position: 'absolute',
+    inset: 0,
+    background: 'radial-gradient(circle at top right, rgba(255,255,255,0.18), transparent 32%), repeating-linear-gradient(120deg, rgba(255,255,255,0.05) 0 2px, transparent 2px 16px)',
+    pointerEvents: 'none',
+    opacity: 0.55,
+  },
+  eventsHeroMain: {
+    position: 'relative',
+    zIndex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 24,
+  },
+  eventsHeroHeaderRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    gap: 18,
+    alignItems: 'flex-start',
+    flexWrap: 'wrap',
+  },
+  eventsHeroEyebrow: {
+    fontSize: 11,
+    fontWeight: 800,
+    textTransform: 'uppercase',
+    letterSpacing: '0.18em',
+    color: 'rgba(255,255,255,0.68)',
+    marginBottom: 10,
+  },
+  eventsHeroTitleRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+    flexWrap: 'wrap',
+    marginBottom: 8,
+  },
+  eventsHeroTitle: {
+    margin: 0,
+    fontFamily: "'Barlow Condensed', sans-serif",
+    fontSize: 42,
+    lineHeight: 0.94,
+    letterSpacing: '0.02em',
+    color: '#fff',
+  },
+  eventsHeroBadge: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    minHeight: 34,
+    padding: '0 12px',
+    borderRadius: 999,
+    border: '1px solid',
+    fontSize: 11,
+    fontWeight: 800,
+    textTransform: 'uppercase',
+    letterSpacing: '0.08em',
+    backdropFilter: 'blur(8px)',
+  },
+  eventsHeroMeta: {
+    display: 'flex',
+    gap: 8,
+    flexWrap: 'wrap',
+    fontSize: 14,
+    lineHeight: 1.6,
+    color: 'rgba(255,255,255,0.78)',
+  },
+  eventsHeroControls: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
+  },
+  eventsControlGroup: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6,
+    minWidth: 220,
+  },
+  eventsControlLabel: {
+    fontSize: 10,
+    fontWeight: 800,
+    textTransform: 'uppercase',
+    letterSpacing: '0.12em',
+    color: 'rgba(255,255,255,0.62)',
+  },
+  eventMenuTrigger: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 40,
+    padding: '0 14px',
+    borderRadius: 12,
+    border: '1px solid rgba(255,255,255,0.18)',
+    background: 'rgba(255,255,255,0.08)',
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: 700,
+    cursor: 'pointer',
+    whiteSpace: 'nowrap',
+    backdropFilter: 'blur(10px)',
+  },
+  eventMenuPanel: {
+    position: 'absolute',
+    right: 0,
+    top: 'calc(100% + 10px)',
+    width: 320,
+    maxWidth: 'calc(100vw - 88px)',
+    padding: '14px',
+    borderRadius: 18,
+    background: '#fff',
+    border: '1px solid rgba(213,206,196,0.88)',
+    boxShadow: '0 24px 50px rgba(26,18,18,0.16)',
+    zIndex: 8,
+  },
+  eventMenuTitle: {
+    fontSize: 12,
+    fontWeight: 800,
+    textTransform: 'uppercase',
+    letterSpacing: '0.12em',
+    color: 'var(--maroon)',
+    marginBottom: 6,
+  },
+  eventMenuHint: {
+    fontSize: 12,
+    lineHeight: 1.5,
+    color: 'var(--text3)',
+    marginBottom: 10,
+  },
+  eventMenuList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+  },
+  eventMenuItem: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    width: '100%',
+    borderRadius: 14,
+    border: '1px solid rgba(213,206,196,0.72)',
+    background: '#fff',
+    padding: '12px 13px',
+    cursor: 'pointer',
+    textAlign: 'left',
+    fontFamily: 'inherit',
+  },
+  eventMenuItemTitle: {
+    display: 'block',
+    fontSize: 14,
+    fontWeight: 800,
+    color: 'var(--text)',
+    marginBottom: 3,
+  },
+  eventMenuItemMeta: {
+    display: 'block',
+    fontSize: 12,
+    color: 'var(--text3)',
+    lineHeight: 1.45,
+  },
+  eventMenuItemArrow: {
+    fontSize: 14,
+    color: 'var(--maroon)',
+    fontWeight: 800,
+  },
+  eventsHeroMetrics: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+    gap: 12,
+  },
+  eventMetricCard: {
+    background: 'rgba(255,255,255,0.1)',
+    border: '1px solid rgba(255,255,255,0.12)',
+    borderRadius: 18,
+    padding: '15px 16px',
+    backdropFilter: 'blur(10px)',
+  },
+  eventMetricLabel: {
+    fontSize: 10,
+    fontWeight: 800,
+    textTransform: 'uppercase',
+    letterSpacing: '0.14em',
+    color: 'rgba(255,255,255,0.58)',
+    marginBottom: 8,
+  },
+  eventMetricValue: {
+    fontFamily: "'Barlow Condensed', sans-serif",
+    fontSize: 34,
+    lineHeight: 0.95,
+    color: '#fff',
+  },
+  eventsReadOnlyBanner: {
+    background: 'var(--maroon-bg)',
+    border: '1px solid rgba(107,30,46,0.16)',
+    color: 'var(--maroon)',
+    borderRadius: 16,
+    padding: '14px 16px',
+    fontSize: 13,
+    lineHeight: 1.6,
+    fontWeight: 600,
+  },
+  eventsPlannerGrid: {
+    display: 'grid',
+    gap: 16,
+  },
+  eventsPlannerCard: {
+    background: 'linear-gradient(180deg, rgba(255,255,255,0.96) 0%, rgba(250,248,245,0.94) 100%)',
+    border: '1px solid rgba(213,206,196,0.92)',
+    borderRadius: 22,
+    padding: '22px',
+    boxShadow: '0 14px 36px rgba(26,18,18,0.06)',
+    backdropFilter: 'blur(6px)',
+  },
+  eventsPanelEyebrow: {
+    fontSize: 11,
+    fontWeight: 800,
+    textTransform: 'uppercase',
+    letterSpacing: '0.14em',
+    color: 'var(--maroon)',
+    marginBottom: 6,
+  },
+  eventsPanelTitle: {
+    fontFamily: "'Barlow Condensed', sans-serif",
+    fontSize: 28,
+    lineHeight: 1,
+    color: 'var(--text)',
+    marginBottom: 8,
+  },
+  eventsPanelCopy: {
+    fontSize: 13,
+    color: 'var(--text3)',
+    lineHeight: 1.6,
+    marginBottom: 18,
+    maxWidth: 520,
+  },
+  eventsCreateCard: {
+    background: '#fff',
+    border: '1px solid rgba(213,206,196,0.92)',
+    borderRadius: 22,
+    padding: '22px',
+    boxShadow: '0 16px 40px rgba(26,18,18,0.06)',
+  },
+  eventsCreateTitle: {
+    fontFamily: "'Barlow Condensed', sans-serif",
+    fontSize: 30,
+    lineHeight: 1,
+    color: 'var(--text)',
+    marginBottom: 8,
+  },
+  eventsCreateCopy: {
+    fontSize: 13,
+    color: 'var(--text3)',
+    lineHeight: 1.6,
+    marginBottom: 18,
+    maxWidth: 580,
+  },
+  eventCalendarToolbar: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 14,
+  },
+  eventMiniLabel: {
+    fontSize: 10,
+    fontWeight: 800,
+    textTransform: 'uppercase',
+    letterSpacing: '0.14em',
+    color: 'var(--text3)',
+    marginBottom: 4,
+  },
+  eventCalendarMonth: {
+    fontFamily: "'Barlow Condensed', sans-serif",
+    fontSize: 24,
+    color: 'var(--text)',
+    lineHeight: 1,
+  },
+  eventCalendarHeadCell: {
+    textAlign: 'center',
+    fontSize: 11,
+    fontWeight: 700,
+    color: 'var(--text3)',
+    padding: '6px 0',
+  },
+  eventCalendarGrid: {
+    alignItems: 'stretch',
+  },
+  eventCalendarBlankCell: {
+    minHeight: 92,
+    borderRadius: 16,
+    background: 'rgba(237,232,225,0.65)',
+    border: '1px solid rgba(213,206,196,0.52)',
+  },
+  eventCalendarCell: {
+    minHeight: 92,
+    borderRadius: 16,
+    border: '1px solid rgba(213,206,196,0.72)',
+    padding: '10px',
+    cursor: 'pointer',
+    textAlign: 'left',
+  },
+  eventCalendarDayNumber: {
+    fontSize: 13,
+    fontWeight: 800,
+    marginBottom: 8,
+  },
+  eventCalendarBadges: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 5,
+    alignItems: 'flex-start',
+  },
+  eventCalendarBadge: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    minHeight: 24,
+    borderRadius: 999,
+    border: '1px solid',
+    padding: '0 8px',
+    fontSize: 10,
+    fontWeight: 800,
+    letterSpacing: '0.03em',
+  },
+  eventDetailHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 12,
+    flexWrap: 'wrap',
+    marginBottom: 16,
+  },
+  eventDetailTitle: {
+    fontFamily: "'Barlow Condensed', sans-serif",
+    fontSize: 28,
+    lineHeight: 1,
+    color: 'var(--text)',
+    marginBottom: 6,
+  },
+  eventDetailMeta: {
+    fontSize: 12,
+    color: 'var(--text3)',
+    lineHeight: 1.5,
+  },
+  eventDetailEmpty: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 280,
+    padding: '28px 20px',
+    textAlign: 'center',
+    borderRadius: 18,
+    border: '1px dashed rgba(213,206,196,0.92)',
+    background: 'rgba(255,255,255,0.62)',
+  },
+  eventEmptyIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: '50%',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: 'var(--gold-bg)',
+    color: 'var(--maroon)',
+    fontSize: 22,
+    marginBottom: 12,
+  },
+  eventEmptyTitle: {
+    fontFamily: "'Barlow Condensed', sans-serif",
+    fontSize: 28,
+    lineHeight: 1,
+    color: 'var(--text)',
+    marginBottom: 8,
+  },
+  eventEmptyCopy: {
+    maxWidth: 280,
+    fontSize: 13,
+    color: 'var(--text3)',
+    lineHeight: 1.7,
+  },
+  eventDetailEmptyState: {
+    borderRadius: 16,
+    padding: '18px',
+    background: 'rgba(255,255,255,0.62)',
+    border: '1px dashed rgba(213,206,196,0.88)',
+    fontSize: 13,
+    color: 'var(--text3)',
+  },
+  eventDaySessionList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 10,
+    overflowY: 'auto',
+  },
+  eventDaySessionCard: {
+    background: '#fff',
+    border: '1px solid rgba(213,206,196,0.8)',
+    borderRadius: 18,
+    padding: '16px',
+    boxShadow: '0 10px 24px rgba(26,18,18,0.04)',
+  },
+  eventDaySessionBadges: {
+    display: 'flex',
+    gap: 8,
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  eventDaySessionBadge: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    minHeight: 24,
+    borderRadius: 999,
+    border: '1px solid',
+    padding: '0 8px',
+    fontSize: 10,
+    fontWeight: 800,
+    textTransform: 'uppercase',
+    letterSpacing: '0.06em',
+  },
+  eventDaySessionBadgeMuted: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    minHeight: 24,
+    borderRadius: 999,
+    border: '1px solid rgba(213,206,196,0.92)',
+    padding: '0 8px',
+    fontSize: 10,
+    fontWeight: 800,
+    textTransform: 'uppercase',
+    letterSpacing: '0.06em',
+    color: 'var(--text2)',
+    background: 'var(--bg3)',
+  },
+  eventDaySessionTitle: {
+    fontSize: 16,
+    fontWeight: 800,
+    color: 'var(--text)',
+    marginBottom: 4,
+  },
+  eventDaySessionMeta: {
+    fontSize: 12,
+    color: 'var(--text3)',
+    lineHeight: 1.6,
+  },
   stackedSection: { display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 24 },
   sectionIntro: { fontSize: 13, color: 'var(--text3)', lineHeight: 1.5, maxWidth: 760 },
   actionRow: { display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' },

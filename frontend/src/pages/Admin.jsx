@@ -103,17 +103,20 @@ export default function Admin() {
   const [newEvent, setNewEvent] = useState({ name: '', season: '', startDate: '', endDate: '' });
   const [creatingEvent, setCreatingEvent] = useState(false);
   const [showCreateEvent, setShowCreateEvent] = useState(false);
-  const [eventStats, setEventStats] = useState(null);
-  const [viewingEventId, setViewingEventId] = useState(null);
   const [eventMsg, setEventMsg] = useState({ type: '', text: '' });
   const [selectedEventId, setSelectedEventId] = useState('');
+  const [viewedEventId, setViewedEventId] = useState('');
 
   const [rankings, setRankings] = useState([]);
 
   const availableEvents = events.filter((e) => !e.archived);
+  const archivedEvents = events.filter((e) => e.archived);
   const activeEvent = availableEvents.find((e) => String(e.id) === String(selectedEventId))
     || availableEvents[0]
     || null;
+  const viewedEvent = events.find((e) => String(e.id) === String(viewedEventId))
+    || null;
+  const isArchivedEventView = Boolean(viewedEvent?.archived);
   const activeGroup = ageGroups.find((group) => group.code.toLowerCase() === (route.groupCode || '').toLowerCase()) || null;
 
   useEffect(() => {
@@ -150,6 +153,29 @@ export default function Admin() {
       setSelectedEventId(String(availableEvents[0].id));
     }
   }, [availableEvents, selectedEventId]);
+
+  useEffect(() => {
+    if (route.view !== 'events') return;
+    if (!events.length) {
+      if (viewedEventId) setViewedEventId('');
+      return;
+    }
+    const currentViewedEvent = events.find((event) => String(event.id) === String(viewedEventId));
+    if (!currentViewedEvent) {
+      const fallback = activeEvent || events.find((event) => event.archived) || null;
+      if (fallback) setViewedEventId(String(fallback.id));
+      return;
+    }
+    if (!currentViewedEvent.archived && activeEvent && String(currentViewedEvent.id) !== String(activeEvent.id)) {
+      setViewedEventId(String(activeEvent.id));
+    }
+  }, [route.view, events, viewedEventId, activeEvent]);
+
+  useEffect(() => {
+    if (route.view === 'events' && isArchivedEventView && showBlockWizard) {
+      setShowBlockWizard(false);
+    }
+  }, [route.view, isArchivedEventView, showBlockWizard]);
 
   useEffect(() => {
     let ignore = false;
@@ -194,16 +220,23 @@ export default function Admin() {
     return () => { ignore = true; };
   }, [activeEvent, route.view, todayDate]);
 
-  const loadAllSessions = useCallback(async (ageGroupId = null) => {
-    if (!activeEvent) return;
+  const loadAllSessions = useCallback(async (ageGroupId = null, eventIdOverride = null) => {
+    const targetEventId = eventIdOverride ?? activeEvent?.id;
+    if (!targetEventId) {
+      setAllSessions([]);
+      setSessionScorers({});
+      return;
+    }
     setSessLoading(true);
     try {
-      const r = await api.allSessions(ageGroupId, activeEvent.id);
+      const r = await api.allSessions(ageGroupId, targetEventId);
       const list = r.sessions || [];
       setAllSessions(list);
       if (list.length) {
         const pairs = await Promise.all(list.map((s) => api.sessionScorers(s.id).then((resp) => [s.id, resp.scorers])));
         setSessionScorers((prev) => ({ ...prev, ...Object.fromEntries(pairs) }));
+      } else {
+        setSessionScorers({});
       }
     } catch (err) {
       console.error(err);
@@ -215,8 +248,8 @@ export default function Admin() {
   useEffect(() => {
     if (route.view === 'sessions') loadAllSessions();
     else if (route.view === 'sessionGroup' && activeGroup) loadAllSessions(activeGroup.id);
-    else if (route.view === 'events' && activeEvent) loadAllSessions();
-  }, [route.view, activeGroup, activeEvent, loadAllSessions]);
+    else if (route.view === 'events') loadAllSessions(null, viewedEvent?.id ?? null);
+  }, [route.view, activeGroup, activeEvent, viewedEvent, loadAllSessions]);
 
   const loadGroupData = useCallback(async (group, eventId) => {
     const [sessRes, playRes] = await Promise.all([
@@ -473,7 +506,7 @@ export default function Admin() {
       if (activeGroup) {
         await loadGroupData(activeGroup, activeEvent.id);
       }
-      await loadAllSessions(activeGroup?.id || null);
+      await loadAllSessions(activeGroup?.id || null, route.view === 'events' ? viewedEvent?.id ?? null : null);
     } catch (err) {
       setBlockMsg(err.message || 'Failed to create block');
     } finally {
@@ -591,10 +624,11 @@ export default function Admin() {
       const nextEvents = ev.events || [];
       const remainingEvents = nextEvents.filter((event) => !event.archived);
       setEvents(nextEvents);
-      setViewingEventId((current) => (current === id ? null : current));
-      setEventStats((current) => (current?.event?.id === id ? null : current));
       if (String(selectedEventId) === String(id)) {
         setSelectedEventId(remainingEvents[0] ? String(remainingEvents[0].id) : '');
+      }
+      if (String(viewedEventId) === String(id)) {
+        setViewedEventId(remainingEvents[0] ? String(remainingEvents[0].id) : '');
       }
       setEventMsg({ type: 'success', text: 'Event archived.' });
     } catch (err) {
@@ -608,22 +642,11 @@ export default function Admin() {
       const r = await api.events();
       setEvents(r.events || []);
       setSelectedEventId(String(id));
+      setViewedEventId(String(id));
       setEventMsg({ type: 'success', text: 'Event restored.' });
     } catch (err) {
       setEventMsg({ type: 'error', text: err.message });
     }
-  };
-
-  const loadEventStats = async (id) => {
-    if (viewingEventId === id) {
-      setViewingEventId(null);
-      setEventStats(null);
-      return;
-    }
-    setViewingEventId(id);
-    setEventStats(null);
-    const data = await api.eventStats(id);
-    setEventStats(data);
   };
 
   const handleImportFile = async (e) => {
@@ -746,23 +769,15 @@ export default function Admin() {
                 ))}
               </select>
             )}
-            {activeEvent && <span style={A.eventPill}>{activeEvent.name}</span>}
             {(route.view === 'sessionGroup' || route.view === 'sessions') && (
               <button onClick={() => setShowBlockWizard((v) => !v)} style={showBlockWizard ? A.ghostBtn : A.primaryBtn}>
                 {showBlockWizard ? 'Cancel' : '+ Session Block'}
               </button>
             )}
             {route.view === 'events' && (
-              <>
-                {!showCreateEvent && (
-                  <button onClick={() => setShowBlockWizard((v) => !v)} style={showBlockWizard ? A.ghostBtn : A.primaryBtn}>
-                    {showBlockWizard ? 'Cancel' : '+ Session Block'}
-                  </button>
-                )}
-                <button onClick={() => { setShowBlockWizard(false); setShowCreateEvent((v) => !v); }} style={showCreateEvent ? A.ghostBtn : A.primaryBtn}>
-                  {showCreateEvent ? 'Cancel' : '+ New Event'}
-                </button>
-              </>
+              <button onClick={() => { setShowBlockWizard(false); setShowCreateEvent((v) => !v); }} style={showCreateEvent ? A.ghostBtn : A.primaryBtn}>
+                {showCreateEvent ? 'Cancel' : '+ New Event'}
+              </button>
             )}
           </div>
         </div>
@@ -862,19 +877,31 @@ export default function Admin() {
 
           {!loading && route.view === 'events' && (
             <EventsView
-              events={events}
+              currentEvents={availableEvents}
+              archivedEvents={archivedEvents}
               activeEvent={activeEvent}
+              viewedEvent={viewedEvent}
+              isArchivedView={isArchivedEventView}
               newEvent={newEvent}
               setNewEvent={setNewEvent}
               showCreateEvent={showCreateEvent}
               createEvent={createEvent}
               creatingEvent={creatingEvent}
               archiveEvent={archiveEvent}
-              eventStats={eventStats}
-              viewingEventId={viewingEventId}
-              loadEventStats={loadEventStats}
               eventMsg={eventMsg}
-              setSelectedEventId={setSelectedEventId}
+              selectCurrentEvent={(eventId) => {
+                setSelectedEventId(String(eventId));
+                setViewedEventId(String(eventId));
+                setShowBlockWizard(false);
+              }}
+              selectArchivedEvent={(eventId) => {
+                setViewedEventId(String(eventId));
+                setShowBlockWizard(false);
+              }}
+              returnToCurrentEvent={() => {
+                if (!activeEvent) return;
+                setViewedEventId(String(activeEvent.id));
+              }}
               restoreEvent={restoreEvent}
               allSessions={allSessions}
               sessLoading={sessLoading}
