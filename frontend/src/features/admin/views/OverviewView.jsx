@@ -183,6 +183,7 @@ export default function OverviewView({
   groupStats,
   openGroup,
   openRankings,
+  openWorkspace,
 }) {
   const activeSessions  = todaySessions.filter((s) => s.status === 'active');
   const otherSessions   = todaySessions.filter((s) => s.status !== 'active');
@@ -303,9 +304,16 @@ export default function OverviewView({
               </div>
               <div style={A.agFooter}>
                 <span style={A.agLink}>Manage →</span>
-                <button onClick={(e) => { e.stopPropagation(); openRankings(g); }} style={A.agRankBtn}>
-                  Rankings →
-                </button>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {openWorkspace && (
+                    <button onClick={(e) => { e.stopPropagation(); openWorkspace(g); }} style={{ ...A.agRankBtn, background: 'var(--maroon)', color: '#fff', borderColor: 'var(--maroon)' }}>
+                      Workspace →
+                    </button>
+                  )}
+                  <button onClick={(e) => { e.stopPropagation(); openRankings(g); }} style={A.agRankBtn}>
+                    Rankings →
+                  </button>
+                </div>
               </div>
             </div>
           );

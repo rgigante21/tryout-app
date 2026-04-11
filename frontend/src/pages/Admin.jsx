@@ -12,8 +12,14 @@ import RankingsView from '../features/admin/views/RankingsView';
 import CoachesView from '../features/admin/views/CoachesView';
 import ResultsView from '../features/admin/views/ResultsView';
 import CheckInView from '../features/admin/views/CheckInView';
+import WorkspacePage from '../features/workspace/WorkspacePage';
 
 function getAdminRoute(pathname) {
+  const workspaceMatch = matchPath('/admin/events/:eventId/age-groups/:ageGroupId', pathname);
+  if (workspaceMatch) {
+    return { view: 'workspace', eventId: workspaceMatch.params.eventId, ageGroupId: workspaceMatch.params.ageGroupId };
+  }
+
   const resultsRankingsMatch = matchPath('/admin/results/:groupCode/rankings', pathname);
   if (resultsRankingsMatch) {
     return { view: 'rankings', groupCode: resultsRankingsMatch.params.groupCode, from: 'results' };
@@ -306,6 +312,11 @@ export default function Admin() {
   const openRankings = useCallback((group) => {
     navigate(`/admin/results/${group.code.toLowerCase()}/rankings`);
   }, [navigate]);
+
+  const openWorkspace = useCallback((group) => {
+    if (!activeEvent) return;
+    navigate(`/admin/events/${activeEvent.id}/age-groups/${group.id}`);
+  }, [navigate, activeEvent]);
 
   const refreshEvents = async () => {
     const ev = await api.events();
@@ -715,9 +726,14 @@ export default function Admin() {
     .filter((s) => sessDateFilter === 'all' || String(s.session_date).slice(0, 10) === sessDateFilter)
     .filter((s) => ageGroupFilter === 'all' || String(s.age_group_id) === ageGroupFilter);
 
+  const workspaceAgeGroup = route.view === 'workspace'
+    ? (ageGroups.find((g) => String(g.id) === String(route.ageGroupId)) || null)
+    : null;
+
   const currentNav = route.view === 'groupDetail' ? 'groups'
     : route.view === 'sessionGroup' ? 'sessions'
     : route.view === 'rankings' ? 'results'
+    : route.view === 'workspace' ? 'groups'
     : route.view;
   const backTarget = route.view === 'groupDetail'
     ? { label: '← Age Groups', to: '/admin/groups' }
@@ -725,7 +741,9 @@ export default function Admin() {
       ? { label: '← Sessions', to: '/admin/sessions' }
       : route.view === 'rankings'
         ? { label: '← Results', to: '/admin/results' }
-        : null;
+        : route.view === 'workspace'
+          ? { label: '← Age Groups', to: '/admin/groups' }
+          : null;
 
   const pageTitle = {
     overview: 'Dashboard',
@@ -738,6 +756,7 @@ export default function Admin() {
     coaches: 'Coaches & Scorers',
     results: 'Results',
     checkin: 'Check-In',
+    workspace: workspaceAgeGroup ? `${workspaceAgeGroup.name} Workspace` : 'Workspace',
   }[route.view];
 
   return (
@@ -799,6 +818,7 @@ export default function Admin() {
               groupStats={groupStats}
               openGroup={openGroup}
               openRankings={openRankings}
+              openWorkspace={openWorkspace}
             />
           )}
 
@@ -924,7 +944,7 @@ export default function Admin() {
           )}
 
           {!loading && route.view === 'groups' && (
-            <GroupsIndexView ageGroups={ageGroups} groupStats={groupStats} openGroup={openGroup} onAddAgeGroup={addAgeGroup} />
+            <GroupsIndexView ageGroups={ageGroups} groupStats={groupStats} openGroup={openGroup} openWorkspace={openWorkspace} onAddAgeGroup={addAgeGroup} />
           )}
 
           {!loading && route.view === 'groupDetail' && activeGroup && (
@@ -998,6 +1018,15 @@ export default function Admin() {
             <CheckInView
               activeEvent={activeEvent}
               ageGroups={ageGroups}
+            />
+          )}
+
+          {!loading && route.view === 'workspace' && (
+            <WorkspacePage
+              eventId={route.eventId}
+              ageGroupId={route.ageGroupId}
+              ageGroups={ageGroups}
+              events={events}
             />
           )}
 

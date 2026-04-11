@@ -3,7 +3,7 @@ import { A } from '../styles';
 import { BlockWizardPanel, STATUS_META, fmt } from '../shared';
 import { api } from '../../../utils/api';
 
-function SessionMiniCard({ sess, updateStatus, removeSession, onSaveSession }) {
+export function SessionMiniCard({ sess, updateStatus, removeSession, onSaveSession }) {
   const [expanded, setExpanded] = useState(false);
   const [draft, setDraft] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -162,7 +162,7 @@ function SessionMiniCard({ sess, updateStatus, removeSession, onSaveSession }) {
   );
 }
 
-export function GroupsIndexView({ ageGroups, groupStats, openGroup, onAddAgeGroup }) {
+export function GroupsIndexView({ ageGroups, groupStats, openGroup, openWorkspace, onAddAgeGroup }) {
   const [showAdd, setShowAdd] = useState(false);
   const nextSortOrder = ageGroups.length > 0 ? Math.max(...ageGroups.map((g) => g.sort_order)) + 1 : 1;
   const [newGroup, setNewGroup] = useState({ name: '', code: '', sortOrder: String(nextSortOrder) });
@@ -236,6 +236,14 @@ export function GroupsIndexView({ ageGroups, groupStats, openGroup, onAddAgeGrou
                 </div>
               </div>
               <span style={A.agLink}>Manage sessions & players →</span>
+              {openWorkspace && (
+                <span
+                  style={{ ...A.agLink, fontSize: 12, marginTop: 6, color: 'var(--maroon)', fontWeight: 700 }}
+                  onClick={(e) => { e.stopPropagation(); openWorkspace(g); }}
+                >
+                  Open Workspace →
+                </span>
+              )}
             </div>
           );
         })}
