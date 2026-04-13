@@ -11,9 +11,9 @@ export const ADMIN_CSS = `
     --bg2:        #FFFFFF;
     --bg3:        #EDE8E1;
     --border:     #D5CEC4;
-    --text:       #1A1212;
-    --text2:      #4A3F3F;
-    --text3:      #6B6060;
+    --text:       #0D0808;
+    --text2:      #1A1212;
+    --text3:      #2D2020;
 
     --maroon:        #6B1E2E;
     --maroon-light:  #8A3145;

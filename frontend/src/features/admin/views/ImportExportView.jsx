@@ -558,7 +558,7 @@ export default function ImportExportView({ activeEvent, ageGroups }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
       {/* Page header */}
       <div style={{ marginBottom: 24 }}>
-        <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 24, fontWeight: 700, letterSpacing: '0.5px', marginBottom: 4 }}>
+        <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 24, fontWeight: 700, letterSpacing: '0.5px', marginBottom: 4, color: 'var(--text2)' }}>
           Import / Export
         </div>
         <div style={{ fontSize: 13, color: 'var(--text3)' }}>
