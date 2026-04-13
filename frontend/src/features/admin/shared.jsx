@@ -37,6 +37,7 @@ export const NAV_ITEMS = [
   { id: 'groups', label: 'Age Groups', icon: '▤', section: 'tryouts', path: '/admin/groups' },
   { id: 'checkin', label: 'Check-In', icon: '✓', section: 'tryouts', path: '/admin/checkin' },
   { id: 'results', label: 'Results', icon: '★', section: 'tryouts', path: '/admin/results' },
+  { id: 'importExport', label: 'Import / Export', icon: '⇅', section: 'tryouts', path: '/admin/import-export' },
   { id: 'coaches', label: 'Coaches', icon: '◯', section: 'people', path: '/admin/coaches' },
 ];
 

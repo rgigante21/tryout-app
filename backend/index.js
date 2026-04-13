@@ -3,7 +3,7 @@ const express      = require('express');
 const cookieParser = require('cookie-parser');
 const { startScheduler } = require('./scheduler');
 
-const { buildCors, apiLimiter, requestId, helmetMiddleware } = require('./middleware/security');
+const { buildCors, apiLimiter, importUploadLimiter, requestId, helmetMiddleware } = require('./middleware/security');
 
 const authRoutes              = require('./routes/auth');
 const sessionRoutes           = require('./routes/sessions');
@@ -12,6 +12,8 @@ const sessionPlayerRoutes     = require('./routes/session-players');
 const scoreRoutes             = require('./routes/scores');
 const adminRoutes             = require('./routes/admin');
 const importRoutes            = require('./routes/import');
+const importLegacyRoutes      = require('./routes/import-legacy');
+const exportRoutes            = require('./routes/export');
 const evaluationTemplateRoutes = require('./routes/evaluation-templates');
 
 // ── Required env validation ───────────────────────────────────────────────────
@@ -70,13 +72,32 @@ app.use('/api/session-blocks',       sessionBlockRoutes);
 app.use('/api/session-players',      sessionPlayerRoutes);
 app.use('/api/scores',               scoreRoutes);
 app.use('/api/admin',                adminRoutes);
-app.use('/api/import',               importRoutes);
+// Upload endpoint gets a tighter rate limit (10/min); other import routes use apiLimiter
+app.post('/api/events/:eventId/import/upload', importUploadLimiter);
+// Event-scoped import/export routes: /api/events/:eventId/import/... and /api/events/:eventId/export/...
+app.use('/api/events',               importRoutes);
+app.use('/api/events',               exportRoutes);
+// Legacy import routes (deprecated — kept for WorkspacePage/GroupsView backward compatibility)
+app.use('/api/import',               importLegacyRoutes);
 app.use('/api/evaluation-templates', evaluationTemplateRoutes);
 
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 
-// ── 404 ───────────────────────────────────────────────────────────────────────
-app.use((_req, res) => res.status(404).json({ error: 'Not found' }));
+// ── Multer error handler (file upload validation) ─────────────────────────────
+// 4-arg error handlers must be registered before the 404 catch-all.
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  if (err.code === 'LIMIT_FILE_SIZE') {
+    return res.status(413).json({ error: 'File exceeds the 5 MB size limit' });
+  }
+  if (err.code === 'LIMIT_UNEXPECTED_FILE') {
+    return res.status(400).json({ error: 'Unexpected file field — use field name "file"' });
+  }
+  if (err.message && err.message.includes('Only CSV and XLSX')) {
+    return res.status(400).json({ error: err.message });
+  }
+  next(err);
+});
 
 // ── Centralized error handler ─────────────────────────────────────────────────
 // eslint-disable-next-line no-unused-vars
@@ -87,6 +108,9 @@ app.use((err, req, res, _next) => {
   const message = isProd ? 'An unexpected error occurred' : err.message;
   res.status(err.status || 500).json({ error: message });
 });
+
+// ── 404 ───────────────────────────────────────────────────────────────────────
+app.use((_req, res) => res.status(404).json({ error: 'Not found' }));
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {

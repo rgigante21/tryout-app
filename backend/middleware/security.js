@@ -44,6 +44,16 @@ const apiLimiter = rateLimit({
   message: { error: 'Too many requests — please slow down' },
 });
 
+// Tighter limit for file upload endpoints — 10 upload+commit cycles per minute
+// is generous for manual admin use. Applied only to the /upload endpoint.
+const importUploadLimiter = rateLimit({
+  windowMs: 60 * 1000,       // 1 minute
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many import requests — please wait a moment and try again' },
+});
+
 // ── Request ID ────────────────────────────────────────────────────────────────
 function requestId(req, res, next) {
   const id = req.headers['x-request-id'] || randomUUID();
@@ -60,4 +70,4 @@ const helmetMiddleware = helmet({
   crossOriginResourcePolicy: { policy: 'same-origin' },
 });
 
-module.exports = { buildCors, authLimiter, apiLimiter, requestId, helmetMiddleware };
+module.exports = { buildCors, authLimiter, apiLimiter, importUploadLimiter, requestId, helmetMiddleware };

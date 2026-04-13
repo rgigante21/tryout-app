@@ -13,6 +13,7 @@ import CoachesView from '../features/admin/views/CoachesView';
 import ResultsView from '../features/admin/views/ResultsView';
 import CheckInView from '../features/admin/views/CheckInView';
 import WorkspacePage from '../features/workspace/WorkspacePage';
+import ImportExportView from '../features/admin/views/ImportExportView';
 
 function getAdminRoute(pathname) {
   const workspaceMatch = matchPath('/admin/events/:eventId/age-groups/:ageGroupId', pathname);
@@ -41,6 +42,7 @@ function getAdminRoute(pathname) {
   if (matchPath('/admin/coaches', pathname)) return { view: 'coaches' };
   if (matchPath('/admin/results', pathname)) return { view: 'results' };
   if (matchPath('/admin/checkin', pathname)) return { view: 'checkin' };
+  if (matchPath('/admin/import-export', pathname)) return { view: 'importExport' };
   return { view: 'overview' };
 }
 
@@ -1016,6 +1018,13 @@ export default function Admin() {
 
           {!loading && route.view === 'checkin' && (
             <CheckInView
+              activeEvent={activeEvent}
+              ageGroups={ageGroups}
+            />
+          )}
+
+          {!loading && route.view === 'importExport' && (
+            <ImportExportView
               activeEvent={activeEvent}
               ageGroups={ageGroups}
             />

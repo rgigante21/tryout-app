@@ -100,10 +100,36 @@ export const api = {
   // Session players — move
   movePlayer: (data) => request('PATCH', '/session-players/move', data),
 
-  // Import
+  // Import (legacy — used by WorkspacePage and GroupsView)
   importPreview: (data) => request('POST', '/import/preview', data),
   importCommit:  (data) => request('POST', '/import/commit',  data),
   csvTemplate:   ()     => `${BASE}/import/csv-template`,
+
+  // Import — event-scoped (new ImportExportView)
+  // formData must be a FormData instance with fields: file, importType, ageGroupId
+  importUpload: (eventId, formData) =>
+    fetch(`${BASE}/events/${eventId}/import/upload`, {
+      method: 'POST',
+      credentials: 'include',
+      body: formData, // Do NOT set Content-Type — browser sets multipart boundary
+    }).then(async res => {
+      const data = await res.json();
+      if (!res.ok) { const err = new Error(data.error || 'Upload failed'); err.status = res.status; throw err; }
+      return data;
+    }),
+  importBatchPreview:  (eventId, batchId) => request('GET',  `/events/${eventId}/import/${batchId}/preview`),
+  importBatchCommit:   (eventId, batchId) => request('POST', `/events/${eventId}/import/${batchId}/commit`),
+  importHistory:       (eventId)           => request('GET',  `/events/${eventId}/import/history`),
+  importBatchErrors:   (eventId, batchId)  => `${BASE}/events/${eventId}/import/${batchId}/errors.csv`,
+  importPlayersTemplate:     (eventId) => `${BASE}/events/${eventId}/import/players-template`,
+  importEvaluatorsTemplate:  (eventId) => `${BASE}/events/${eventId}/import/evaluators-template`,
+  importAssignmentsTemplate: (eventId) => `${BASE}/events/${eventId}/import/assignments-template`,
+
+  // Export — event-scoped
+  exportTeamRecs:    (eventId, ageGroupId, includeNotes = true) =>
+    `${BASE}/events/${eventId}/export/team-recommendations?ageGroupId=${ageGroupId || ''}&includeNotes=${includeNotes}`,
+  exportSportsEngine: (eventId, ageGroupId) =>
+    `${BASE}/events/${eventId}/export/sportsengine?ageGroupId=${ageGroupId || ''}`,
 
   // Check-in
   checkin: (sessionId, playerId, checkedIn = true, attendanceStatus = undefined) =>
