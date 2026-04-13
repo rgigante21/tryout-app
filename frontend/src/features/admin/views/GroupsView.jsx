@@ -162,8 +162,7 @@ export function SessionMiniCard({ sess, updateStatus, removeSession, onSaveSessi
   );
 }
 
-export function GroupsIndexView({ ageGroups, groupStats, openGroup, openWorkspace, onAddAgeGroup }) {
-  const [showAdd, setShowAdd] = useState(false);
+export function GroupsIndexView({ ageGroups, groupStats, openGroup, openWorkspace, onAddAgeGroup, showAdd, setShowAdd }) {
   const nextSortOrder = ageGroups.length > 0 ? Math.max(...ageGroups.map((g) => g.sort_order)) + 1 : 1;
   const [newGroup, setNewGroup] = useState({ name: '', code: '', sortOrder: String(nextSortOrder) });
   const [creating, setCreating] = useState(false);
@@ -191,9 +190,6 @@ export function GroupsIndexView({ ageGroups, groupStats, openGroup, openWorkspac
             Keep rosters and session planning organized by age group so coordinators can move quickly between levels during tryouts.
           </div>
         </div>
-        <button onClick={() => setShowAdd((v) => !v)} style={showAdd ? A.ghostBtn : A.primaryBtn}>
-          {showAdd ? 'Cancel' : '+ New Age Group'}
-        </button>
       </div>
 
       {showAdd && (

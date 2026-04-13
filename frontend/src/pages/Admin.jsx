@@ -96,6 +96,8 @@ export default function Admin() {
   const [importResult, setImportResult] = useState(null);
   const [importMsg, setImportMsg] = useState('');
 
+  const [showAddAgeGroup, setShowAddAgeGroup] = useState(false);
+
   const [newCoach, setNewCoach] = useState({ firstName: '', lastName: '', email: '', password: '', role: 'scorer', sessions: new Set() });
   const [addingCoach, setAddingCoach] = useState(false);
   const [coachError, setCoachError] = useState('');
@@ -758,6 +760,7 @@ export default function Admin() {
     coaches: 'Coaches & Scorers',
     results: 'Results',
     checkin: 'Check-In',
+    importExport: 'Import / Export',
     workspace: workspaceAgeGroup ? `${workspaceAgeGroup.name} Workspace` : 'Workspace',
   }[route.view];
 
@@ -793,6 +796,11 @@ export default function Admin() {
             {(route.view === 'sessionGroup' || route.view === 'sessions') && (
               <button onClick={() => setShowBlockWizard((v) => !v)} style={showBlockWizard ? A.ghostBtn : A.primaryBtn}>
                 {showBlockWizard ? 'Cancel' : '+ Session Block'}
+              </button>
+            )}
+            {route.view === 'groups' && (
+              <button onClick={() => setShowAddAgeGroup((v) => !v)} style={showAddAgeGroup ? A.ghostBtn : A.primaryBtn}>
+                {showAddAgeGroup ? 'Cancel' : '+ New Age Group'}
               </button>
             )}
             {route.view === 'events' && (
@@ -946,7 +954,7 @@ export default function Admin() {
           )}
 
           {!loading && route.view === 'groups' && (
-            <GroupsIndexView ageGroups={ageGroups} groupStats={groupStats} openGroup={openGroup} openWorkspace={openWorkspace} onAddAgeGroup={addAgeGroup} />
+            <GroupsIndexView ageGroups={ageGroups} groupStats={groupStats} openGroup={openGroup} openWorkspace={openWorkspace} onAddAgeGroup={addAgeGroup} showAdd={showAddAgeGroup} setShowAdd={setShowAddAgeGroup} />
           )}
 
           {!loading && route.view === 'groupDetail' && activeGroup && (

@@ -556,16 +556,6 @@ export default function ImportExportView({ activeEvent, ageGroups }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-      {/* Page header */}
-      <div style={{ marginBottom: 24 }}>
-        <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 24, fontWeight: 700, letterSpacing: '0.5px', marginBottom: 4, color: 'var(--text2)' }}>
-          Import / Export
-        </div>
-        <div style={{ fontSize: 13, color: 'var(--text3)' }}>
-          {activeEvent.name} — Bring SportsEngine data in, export placements out
-        </div>
-      </div>
-
       {/* Tab bar */}
       <div style={{ display: 'flex', gap: 4, marginBottom: 24, borderBottom: '2px solid var(--border)', paddingBottom: 0 }}>
         {TABS.map(tab => (
