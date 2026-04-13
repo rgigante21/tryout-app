@@ -54,7 +54,7 @@ function EventArchiveMenu({ archivedEvents, onSelectArchivedEvent }) {
       <summary style={A.eventMenuTrigger}>Archived Tryouts</summary>
       <div style={A.eventMenuPanel}>
         <div style={A.eventMenuTitle}>Past tryouts</div>
-        <div style={A.eventMenuHint}>Open an archived event in read-only mode.</div>
+        <div style={A.eventMenuHint}>Open an archived tryout in read-only mode.</div>
         <div style={A.eventMenuList}>
           {archivedEvents.map((event) => (
             <button
@@ -326,9 +326,9 @@ export default function EventsView({
       {!hasAnything && !showCreateEvent && (
         <div style={A.eventsEmptyState}>
           <div style={A.eventsHeroEyebrow}>Tryout Calendar</div>
-          <div style={A.eventsEmptyHeadline}>No events on the board yet</div>
+          <div style={A.eventsEmptyHeadline}>No tryouts on the board yet</div>
           <div style={A.eventsEmptyCopy}>
-            Create an event to start mapping tryout dates, session blocks, players, and scoring windows.
+            Create a tryout to start mapping dates, session blocks, players, and scoring windows.
           </div>
         </div>
       )}
@@ -336,11 +336,11 @@ export default function EventsView({
       {showCreateEvent && (
         <div style={A.eventsCreateCard}>
           <div style={A.eventsPanelEyebrow}>Build a New Tryout Window</div>
-          <div style={A.eventsCreateTitle}>New Event</div>
+          <div style={A.eventsCreateTitle}>New Tryout</div>
           <div style={A.eventsCreateCopy}>Set the season frame first. The planner will use these dates to anchor the calendar immediately.</div>
           <div style={A.formRow}>
             <div style={{ flex: 2 }}>
-              <label style={A.fieldLabel}>Event name</label>
+              <label style={A.fieldLabel}>Tryout name</label>
               <input
                 placeholder="e.g. Fall Tryouts 2027"
                 value={newEvent.name}
@@ -380,7 +380,7 @@ export default function EventsView({
               disabled={creatingEvent || !newEvent.name || !newEvent.season || !newEvent.startDate || !newEvent.endDate}
               style={A.saveBtn}
             >
-              {creatingEvent ? 'Creating…' : 'Create Event'}
+              {creatingEvent ? 'Creating…' : 'Create Tryout'}
             </button>
           </div>
         </div>
@@ -423,7 +423,7 @@ export default function EventsView({
                 <div style={A.eventsHeroControls}>
                   {currentEvents.length > 1 && (
                     <label style={A.eventsControlGroup}>
-                      <span style={A.eventsControlLabel}>Current event</span>
+                      <span style={A.eventsControlLabel}>Current tryout</span>
                       <select
                         value={activeEvent ? String(activeEvent.id) : ''}
                         onChange={(e) => selectCurrentEvent(e.target.value)}
@@ -448,18 +448,18 @@ export default function EventsView({
 
                   {isArchivedView ? (
                     <button onClick={() => restoreEvent(viewedEvent.id)} style={A.primaryBtn}>
-                      Restore Event
+                      Restore Tryout
                     </button>
                   ) : (
                     <button onClick={() => archiveEvent(viewedEvent.id)} style={{ ...A.ghostBtn, borderColor: 'var(--red)', color: 'var(--red-txt)' }}>
-                      Archive
+                      Archive Tryout
                     </button>
                   )}
                 </div>
               </div>
 
               <div style={A.eventsHeroMetrics}>
-                <EventMetric label="Event span" value={spanDays ? `${spanDays} day${spanDays > 1 ? 's' : ''}` : 'TBD'} />
+                <EventMetric label="Tryout span" value={spanDays ? `${spanDays} day${spanDays > 1 ? 's' : ''}` : 'TBD'} />
                 <EventMetric label="Scheduled days" value={uniqueSessionDates.length || 0} accent="blue" />
                 <EventMetric label="Sessions" value={allSessions.length || 0} />
                 <EventMetric label="Skills / Games" value={`${skillsCount}/${gamesCount}`} accent="blue" />
@@ -469,7 +469,7 @@ export default function EventsView({
 
           {isArchivedView && (
             <div style={A.eventsReadOnlyBanner}>
-              You are reviewing an archived tryout. Calendar and day plans are visible, but schedule editing and new block creation are disabled until the event is restored.
+              You are reviewing an archived tryout. Calendar and day plans are visible, but schedule editing and new block creation are disabled until the tryout is restored.
             </div>
           )}
 

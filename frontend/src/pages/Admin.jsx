@@ -623,7 +623,7 @@ export default function Admin() {
       setEvents(ev.events);
       setNewEvent({ name: '', season: '', startDate: '', endDate: '' });
       setShowCreateEvent(false);
-      setEventMsg({ type: 'success', text: `"${r.event.name}" created.` });
+      setEventMsg({ type: 'success', text: `"${r.event.name}" tryout created.` });
     } catch (err) {
       setEventMsg({ type: 'error', text: err.message });
     } finally {
@@ -632,7 +632,7 @@ export default function Admin() {
   };
 
   const archiveEvent = async (id) => {
-    if (!window.confirm('Archive this event? All data is preserved.')) return;
+    if (!window.confirm('Archive this tryout? All data is preserved.')) return;
     try {
       await api.archiveEvent(id, true);
       const ev = await api.events();
@@ -645,7 +645,7 @@ export default function Admin() {
       if (String(viewedEventId) === String(id)) {
         setViewedEventId(remainingEvents[0] ? String(remainingEvents[0].id) : '');
       }
-      setEventMsg({ type: 'success', text: 'Event archived.' });
+      setEventMsg({ type: 'success', text: 'Tryout archived.' });
     } catch (err) {
       setEventMsg({ type: 'error', text: err.message });
     }
@@ -658,7 +658,7 @@ export default function Admin() {
       setEvents(r.events || []);
       setSelectedEventId(String(id));
       setViewedEventId(String(id));
-      setEventMsg({ type: 'success', text: 'Event restored.' });
+      setEventMsg({ type: 'success', text: 'Tryout restored.' });
     } catch (err) {
       setEventMsg({ type: 'error', text: err.message });
     }
@@ -750,10 +750,10 @@ export default function Admin() {
           : null;
 
   const pageTitle = {
-    overview: 'Dashboard',
+    overview: 'Today',
     sessions: 'Sessions',
     sessionGroup: activeGroup ? `${activeGroup.name} Sessions` : 'Sessions',
-    events: 'Events',
+    events: 'Tryout Setup',
     groups: 'Age Groups',
     groupDetail: activeGroup ? activeGroup.name : 'Age Groups',
     rankings: activeGroup ? `${activeGroup.name} Rankings` : 'Rankings',
@@ -784,7 +784,7 @@ export default function Admin() {
                 value={activeEvent ? String(activeEvent.id) : ''}
                 onChange={(e) => setSelectedEventId(e.target.value)}
                 style={A.toolbarSelect}
-                aria-label="Selected event"
+                aria-label="Selected tryout"
               >
                 {availableEvents.map((event) => (
                   <option key={event.id} value={event.id}>
@@ -805,7 +805,7 @@ export default function Admin() {
             )}
             {route.view === 'events' && (
               <button onClick={() => { setShowBlockWizard(false); setShowCreateEvent((v) => !v); }} style={showCreateEvent ? A.ghostBtn : A.primaryBtn}>
-                {showCreateEvent ? 'Cancel' : '+ New Event'}
+                {showCreateEvent ? 'Cancel' : '+ New Tryout'}
               </button>
             )}
           </div>
@@ -826,9 +826,14 @@ export default function Admin() {
               todayScorers={todayScorers}
               todayCheckIns={todayCheckIns}
               groupStats={groupStats}
+              activeEvent={activeEvent}
               openGroup={openGroup}
               openRankings={openRankings}
               openWorkspace={openWorkspace}
+              openCheckIn={() => goTo('/admin/checkin')}
+              openSessions={() => goTo('/admin/sessions')}
+              openTryoutSetup={() => goTo('/admin/events')}
+              openResults={() => goTo('/admin/results')}
             />
           )}
 

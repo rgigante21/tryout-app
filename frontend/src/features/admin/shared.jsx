@@ -31,8 +31,8 @@ export const STATUS_META = {
 };
 
 export const NAV_ITEMS = [
-  { id: 'overview', label: 'Dashboard', icon: '◆', section: 'overview', path: '/admin/overview' },
-  { id: 'events', label: 'Events', icon: '◷', section: 'tryouts', path: '/admin/events' },
+  { id: 'overview', label: 'Today', icon: '◆', section: 'overview', path: '/admin/overview' },
+  { id: 'events', label: 'Tryout Setup', icon: '◷', section: 'tryouts', path: '/admin/events' },
   { id: 'sessions', label: 'Sessions', icon: '≡', section: 'tryouts', path: '/admin/sessions' },
   { id: 'groups', label: 'Age Groups', icon: '▤', section: 'tryouts', path: '/admin/groups' },
   { id: 'checkin', label: 'Check-In', icon: '✓', section: 'tryouts', path: '/admin/checkin' },

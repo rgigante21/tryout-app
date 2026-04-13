@@ -484,7 +484,7 @@ function ImportHistoryPanel({ eventId }) {
         <div style={{ marginTop: 12 }}>
           {loading && <div style={{ color: 'var(--text3)', fontSize: 13 }}>Loading...</div>}
           {history && history.length === 0 && (
-            <div style={{ color: 'var(--text3)', fontSize: 13 }}>No imports yet for this event.</div>
+            <div style={{ color: 'var(--text3)', fontSize: 13 }}>No imports yet for this tryout.</div>
           )}
           {history && history.length > 0 && (
             <div style={{ border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
@@ -546,8 +546,8 @@ export default function ImportExportView({ activeEvent, ageGroups }) {
     return (
       <div style={{ padding: 32, textAlign: 'center', color: 'var(--text3)' }}>
         <div style={{ fontSize: 32, marginBottom: 12 }}>⇅</div>
-        <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 6 }}>Select an event to import or export</div>
-        <div style={{ fontSize: 13 }}>Use the Events page to create or activate a tryout event first.</div>
+        <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 6 }}>Select a tryout to import or export</div>
+        <div style={{ fontSize: 13 }}>Use Tryout Setup to create or activate a tryout first.</div>
       </div>
     );
   }

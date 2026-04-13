@@ -51,6 +51,182 @@ function TypeBadge({ type }) {
   );
 }
 
+function sessionStartMs(session, fallbackDate) {
+  const date = String(session.session_date || fallbackDate || '').slice(0, 10);
+  const time = session.start_time ? String(session.start_time).slice(0, 5) : '23:59';
+  const stamp = new Date(`${date}T${time}:00`).getTime();
+  return Number.isNaN(stamp) ? Number.MAX_SAFE_INTEGER : stamp;
+}
+
+function TodayCommandCenter({
+  activeEvent,
+  todayDate,
+  todayLoading,
+  todaySessions,
+  todayScorers,
+  todayCheckIns,
+  ageGroups,
+  openCheckIn,
+  openSessions,
+  openTryoutSetup,
+  openResults,
+}) {
+  const nowMs = Date.now();
+  const sortedSessions = todaySessions
+    .slice()
+    .sort((a, b) => sessionStartMs(a, todayDate) - sessionStartMs(b, todayDate));
+  const activeSessions = sortedSessions.filter((s) => s.status === 'active');
+  const nextSession = activeSessions[0]
+    || sortedSessions.find((s) => sessionStartMs(s, todayDate) >= nowMs && !['complete', 'scoring_complete', 'finalized'].includes(s.status))
+    || sortedSessions.find((s) => !['complete', 'scoring_complete', 'finalized'].includes(s.status))
+    || sortedSessions[0]
+    || null;
+
+  const totalPlayersToday = todaySessions.reduce((sum, session) => sum + (Number(session.player_count) || 0), 0);
+  const checkedIn = Object.values(todayCheckIns).reduce((sum, stat) => sum + (Number(stat?.checked) || 0), 0);
+  const checkInTotal = Object.values(todayCheckIns).reduce((sum, stat) => sum + (Number(stat?.total) || 0), 0);
+
+  const missingScorers = todaySessions.filter((session) => !(todayScorers[session.id] || []).length);
+  const activeIncomplete = todaySessions.filter((session) => (
+    session.status === 'active'
+    && (Number(session.player_count) || 0) > 0
+    && (Number(session.total_scores) || 0) < (Number(session.player_count) || 0)
+  ));
+  const checkInGaps = Object.values(todayCheckIns).filter((stat) => (
+    (Number(stat?.total) || 0) > 0
+    && (Number(stat?.checked) || 0) < (Number(stat?.total) || 0)
+  ));
+
+  const attentionItems = [];
+  if (!activeEvent) {
+    attentionItems.push({
+      tone: 'red',
+      title: 'Create a tryout',
+      body: 'Set up the active tryout window before adding sessions, rosters, or check-in.',
+      action: 'Open Tryout Setup',
+      onAction: openTryoutSetup,
+    });
+  } else if (todayLoading) {
+    attentionItems.push({
+      tone: 'blue',
+      title: "Loading today's plan",
+      body: 'Checking sessions, coaches, and check-in for the selected date.',
+      action: 'Open Sessions',
+      onAction: openSessions,
+    });
+  } else if (!todayLoading && !todaySessions.length) {
+    attentionItems.push({
+      tone: 'blue',
+      title: 'No sessions today',
+      body: 'Use Sessions to build the day plan or change the date below to review another day.',
+      action: 'Open Sessions',
+      onAction: openSessions,
+    });
+  }
+  if (activeEvent && !ageGroups.length) {
+    attentionItems.push({
+      tone: 'red',
+      title: 'No age groups yet',
+      body: 'Add age groups before importing players or building tryout blocks.',
+      action: 'Open Tryout Setup',
+      onAction: openTryoutSetup,
+    });
+  }
+  if (!todayLoading && missingScorers.length) {
+    attentionItems.push({
+      tone: 'gold',
+      title: `${missingScorers.length} session${missingScorers.length === 1 ? '' : 's'} missing coaches`,
+      body: 'Assign scorers before players arrive so score sheets are ready.',
+      action: 'Open Sessions',
+      onAction: openSessions,
+    });
+  }
+  if (!todayLoading && activeIncomplete.length) {
+    attentionItems.push({
+      tone: 'green',
+      title: `${activeIncomplete.length} live session${activeIncomplete.length === 1 ? '' : 's'} need scores`,
+      body: 'Open scoring progress and keep live evaluations moving.',
+      action: 'View Results',
+      onAction: openResults,
+    });
+  }
+  if (!todayLoading && checkInGaps.length) {
+    attentionItems.push({
+      tone: 'blue',
+      title: 'Check-in still open',
+      body: `${checkedIn} of ${checkInTotal} players are marked in for today.`,
+      action: 'Open Check-In',
+      onAction: openCheckIn,
+    });
+  }
+  if (!attentionItems.length) {
+    attentionItems.push({
+      tone: 'green',
+      title: 'Today is ready',
+      body: 'Sessions, coaches, and check-in look ready from here.',
+      action: 'Open Sessions',
+      onAction: openSessions,
+    });
+  }
+
+  return (
+    <section style={ov.commandCenter}>
+      <div style={ov.commandMain}>
+        <div style={ov.commandEyebrow}>Today</div>
+        <h3 style={ov.commandTitle}>{activeEvent ? activeEvent.name : 'No current tryout selected'}</h3>
+        <div style={ov.commandMeta}>
+          {activeEvent
+            ? `${activeEvent.season} · ${fmt.date(activeEvent.start_date)} to ${fmt.date(activeEvent.end_date)}`
+            : 'Create a tryout window to begin scheduling.'}
+        </div>
+        <div style={ov.commandActions}>
+          <button onClick={openCheckIn} style={{ ...A.primaryBtn, borderRadius: 8 }}>Open Check-In</button>
+          <button onClick={openSessions} style={ov.commandGhostBtn}>Manage Sessions</button>
+          <button onClick={openTryoutSetup} style={ov.commandGhostBtn}>Tryout Setup</button>
+        </div>
+      </div>
+
+      <div style={ov.commandPanel}>
+        <div style={ov.commandPanelHeader}>
+          <span>Needs Attention</span>
+          <span style={ov.commandPanelCount}>{attentionItems.length}</span>
+        </div>
+        <div style={ov.attentionList}>
+          {attentionItems.slice(0, 3).map((item) => (
+            <div key={item.title} style={{ ...ov.attentionItem, borderLeftColor: ov.attentionTone[item.tone] || 'var(--border)' }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={ov.attentionTitle}>{item.title}</div>
+                <div style={ov.attentionBody}>{item.body}</div>
+              </div>
+              {item.onAction && (
+                <button onClick={item.onAction} style={ov.attentionAction}>{item.action}</button>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div style={ov.commandStats}>
+        <div style={ov.commandStat}>
+          <span style={ov.commandStatLabel}>Next Up</span>
+          <strong style={ov.commandStatValue}>{nextSession ? fmt.time(nextSession.start_time) : '-'}</strong>
+          <span style={ov.commandStatMeta}>{nextSession ? nextSession.name : 'No session selected'}</span>
+        </div>
+        <div style={ov.commandStat}>
+          <span style={ov.commandStatLabel}>Sessions</span>
+          <strong style={ov.commandStatValue}>{todaySessions.length}</strong>
+          <span style={ov.commandStatMeta}>on this date</span>
+        </div>
+        <div style={ov.commandStat}>
+          <span style={ov.commandStatLabel}>Players</span>
+          <strong style={ov.commandStatValue}>{totalPlayersToday}</strong>
+          <span style={ov.commandStatMeta}>scheduled today</span>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 // ── Live Session Card ─────────────────────────────────────────────────────────
 
 function LiveCard({ sess, scorers, checkIns }) {
@@ -181,9 +357,14 @@ export default function OverviewView({
   todayScorers = {},
   todayCheckIns = {},
   groupStats,
+  activeEvent,
   openGroup,
   openRankings,
   openWorkspace,
+  openCheckIn,
+  openSessions,
+  openTryoutSetup,
+  openResults,
 }) {
   const activeSessions  = todaySessions.filter((s) => s.status === 'active');
   const otherSessions   = todaySessions.filter((s) => s.status !== 'active');
@@ -194,6 +375,20 @@ export default function OverviewView({
 
   return (
     <>
+      <TodayCommandCenter
+        activeEvent={activeEvent}
+        todayDate={todayDate}
+        todayLoading={todayLoading}
+        todaySessions={todaySessions}
+        todayScorers={todayScorers}
+        todayCheckIns={todayCheckIns}
+        ageGroups={ageGroups}
+        openCheckIn={openCheckIn}
+        openSessions={openSessions}
+        openTryoutSetup={openTryoutSetup}
+        openResults={openResults}
+      />
+
       {/* ── Live Now ───────────────────────────────────────────── */}
       {!todayLoading && activeSessions.length > 0 && (
         <div style={{ marginBottom: 28 }}>
@@ -326,6 +521,178 @@ export default function OverviewView({
 // ── Local styles ──────────────────────────────────────────────────────────────
 
 const ov = {
+  commandCenter: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+    gap: 14,
+    alignItems: 'stretch',
+    marginBottom: 28,
+  },
+  commandMain: {
+    background: 'linear-gradient(135deg, #471420 0%, #641b2b 54%, #294766 100%)',
+    color: '#fff',
+    borderRadius: 8,
+    padding: '24px 26px',
+    boxShadow: '0 18px 40px rgba(74,19,32,0.18)',
+  },
+  commandEyebrow: {
+    fontSize: 11,
+    fontWeight: 800,
+    textTransform: 'uppercase',
+    letterSpacing: '0.14em',
+    color: 'rgba(255,255,255,0.68)',
+    marginBottom: 10,
+  },
+  commandTitle: {
+    margin: 0,
+    fontFamily: "'Barlow Condensed', sans-serif",
+    fontSize: 42,
+    lineHeight: 0.98,
+    color: '#fff',
+  },
+  commandMeta: {
+    marginTop: 10,
+    color: 'rgba(255,255,255,0.78)',
+    fontSize: 14,
+    lineHeight: 1.5,
+  },
+  commandActions: {
+    display: 'flex',
+    gap: 10,
+    flexWrap: 'wrap',
+    marginTop: 22,
+  },
+  commandGhostBtn: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 40,
+    padding: '0 14px',
+    background: 'rgba(255,255,255,0.1)',
+    border: '1px solid rgba(255,255,255,0.22)',
+    borderRadius: 8,
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: 700,
+    cursor: 'pointer',
+    fontFamily: 'inherit',
+    whiteSpace: 'nowrap',
+  },
+  commandPanel: {
+    background: '#FFFFFF',
+    border: '1px solid var(--border)',
+    borderRadius: 8,
+    padding: '18px',
+    boxShadow: '0 12px 30px rgba(26,18,18,0.05)',
+  },
+  commandPanelHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 12,
+    fontSize: 12,
+    fontWeight: 800,
+    color: 'var(--maroon)',
+    textTransform: 'uppercase',
+    letterSpacing: '0.1em',
+  },
+  commandPanelCount: {
+    minWidth: 24,
+    height: 24,
+    borderRadius: 8,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: 'var(--maroon-bg)',
+    color: 'var(--maroon)',
+    letterSpacing: 0,
+  },
+  attentionList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+  },
+  attentionItem: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12,
+    border: '1px solid var(--border)',
+    borderLeft: '4px solid var(--border)',
+    borderRadius: 8,
+    padding: '12px',
+    background: '#FAF8F5',
+  },
+  attentionTone: {
+    red: 'var(--red)',
+    gold: 'var(--gold)',
+    green: 'var(--green)',
+    blue: 'var(--blue)',
+  },
+  attentionTitle: {
+    fontSize: 14,
+    fontWeight: 800,
+    color: 'var(--text)',
+    marginBottom: 3,
+  },
+  attentionBody: {
+    fontSize: 12,
+    color: 'var(--text3)',
+    lineHeight: 1.45,
+  },
+  attentionAction: {
+    flexShrink: 0,
+    minHeight: 32,
+    padding: '0 10px',
+    borderRadius: 8,
+    border: '1px solid var(--border)',
+    background: '#fff',
+    color: 'var(--maroon)',
+    fontSize: 12,
+    fontWeight: 800,
+    cursor: 'pointer',
+    fontFamily: 'inherit',
+    whiteSpace: 'nowrap',
+  },
+  commandStats: {
+    gridColumn: '1 / -1',
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+    gap: 10,
+  },
+  commandStat: {
+    background: '#FFFFFF',
+    border: '1px solid var(--border)',
+    borderRadius: 8,
+    padding: '14px 16px',
+    minHeight: 96,
+    boxShadow: '0 8px 24px rgba(26,18,18,0.04)',
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'space-between',
+  },
+  commandStatLabel: {
+    fontSize: 11,
+    fontWeight: 800,
+    color: 'var(--text3)',
+    textTransform: 'uppercase',
+    letterSpacing: '0.08em',
+  },
+  commandStatValue: {
+    fontFamily: "'Barlow Condensed', sans-serif",
+    fontSize: 32,
+    lineHeight: 1,
+    color: 'var(--maroon)',
+    marginTop: 8,
+  },
+  commandStatMeta: {
+    fontSize: 12,
+    color: 'var(--text3)',
+    lineHeight: 1.4,
+    marginTop: 6,
+  },
+
   // Live card
   liveCard: {
     background: '#FFFFFF',
