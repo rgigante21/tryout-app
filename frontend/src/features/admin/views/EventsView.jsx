@@ -396,16 +396,6 @@ export default function EventsView({
                   <div style={A.eventsHeroEyebrow}>{isArchivedView ? 'Archived Tryout Review' : 'Current Tryout Window'}</div>
                   <div style={A.eventsHeroTitleRow}>
                     <h3 style={A.eventsHeroTitle}>{viewedEvent.name}</h3>
-                    <span
-                      style={{
-                        ...A.eventsHeroBadge,
-                        background: isArchivedView ? 'rgba(107,30,46,0.14)' : 'rgba(240,180,41,0.18)',
-                        color: isArchivedView ? 'var(--maroon)' : '#5f4307',
-                        borderColor: isArchivedView ? 'rgba(107,30,46,0.2)' : 'rgba(240,180,41,0.26)',
-                      }}
-                    >
-                      {isArchivedView ? 'Read-only archive' : 'Live planning'}
-                    </span>
                   </div>
                   <div style={A.eventsHeroMeta}>
                     <span>{viewedEvent.season}</span>
@@ -456,13 +446,6 @@ export default function EventsView({
                     </button>
                   )}
                 </div>
-              </div>
-
-              <div style={A.eventsHeroMetrics}>
-                <EventMetric label="Tryout span" value={spanDays ? `${spanDays} day${spanDays > 1 ? 's' : ''}` : 'TBD'} />
-                <EventMetric label="Scheduled days" value={uniqueSessionDates.length || 0} accent="blue" />
-                <EventMetric label="Sessions" value={allSessions.length || 0} />
-                <EventMetric label="Skills / Games" value={`${skillsCount}/${gamesCount}`} accent="blue" />
               </div>
             </div>
           </section>
