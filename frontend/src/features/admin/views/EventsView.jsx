@@ -12,15 +12,6 @@ function toDateStr(year, month, day) {
   return `${year}-${pad(month + 1)}-${pad(day)}`;
 }
 
-function inclusiveDaySpan(startDate, endDate) {
-  if (!startDate || !endDate) return null;
-  const start = new Date(`${String(startDate).slice(0, 10)}T12:00:00`);
-  const end = new Date(`${String(endDate).slice(0, 10)}T12:00:00`);
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
-  const diff = Math.round((end.getTime() - start.getTime()) / 86400000);
-  return diff >= 0 ? diff + 1 : null;
-}
-
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December'];
 const DAY_HEADERS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
@@ -33,15 +24,6 @@ function buildCalendarCells(year, month) {
     cells[firstDay + d - 1] = d;
   }
   return cells;
-}
-
-function EventMetric({ label, value, accent = 'gold' }) {
-  return (
-    <div style={{ ...A.eventMetricCard, borderColor: accent === 'blue' ? 'rgba(90,141,238,0.3)' : 'rgba(240,180,41,0.25)' }}>
-      <div style={A.eventMetricLabel}>{label}</div>
-      <div style={A.eventMetricValue}>{value}</div>
-    </div>
-  );
 }
 
 function EventArchiveMenu({ archivedEvents, onSelectArchivedEvent }) {
@@ -303,10 +285,6 @@ export default function EventsView({
   const [selectedDate, setSelectedDate] = useState(null);
 
   const hasAnything = currentEvents.length > 0 || archivedEvents.length > 0;
-  const uniqueSessionDates = [...new Set(allSessions.map((session) => String(session.session_date).slice(0, 10)))];
-  const skillsCount = allSessions.filter((session) => session.session_type !== 'game').length;
-  const gamesCount = allSessions.filter((session) => session.session_type === 'game').length;
-  const spanDays = inclusiveDaySpan(viewedEvent?.start_date, viewedEvent?.end_date);
 
   useEffect(() => {
     setSelectedDate(null);
