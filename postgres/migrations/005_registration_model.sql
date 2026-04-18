@@ -110,18 +110,16 @@ CREATE UNIQUE INDEX IF NOT EXISTS scores_session_registration_scorer_uniq
 -- 5. Backfill registration_id on roster/score rows from session event context
 UPDATE session_players sp
 SET registration_id = per.id
-FROM sessions s
-JOIN player_event_registrations per
-  ON per.event_id = s.event_id
- AND per.player_id = sp.player_id
+FROM sessions s, player_event_registrations per
 WHERE sp.session_id = s.id
+  AND per.event_id = s.event_id
+  AND per.player_id = sp.player_id
   AND sp.registration_id IS NULL;
 
 UPDATE scores sc
 SET registration_id = per.id
-FROM sessions s
-JOIN player_event_registrations per
-  ON per.event_id = s.event_id
- AND per.player_id = sc.player_id
+FROM sessions s, player_event_registrations per
 WHERE sc.session_id = s.id
+  AND per.event_id = s.event_id
+  AND per.player_id = sc.player_id
   AND sc.registration_id IS NULL;

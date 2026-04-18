@@ -5,11 +5,12 @@ const BASE = '/api';
  * Uses credentials: 'include' so the browser sends the auth_token HttpOnly cookie.
  * No Authorization header — token lives in a cookie managed by the server.
  */
-async function request(method, path, body) {
+async function request(method, path, body, options = {}) {
   const res = await fetch(`${BASE}${path}`, {
     method,
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
+    signal: options.signal,
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   });
 
@@ -24,6 +25,12 @@ async function request(method, path, body) {
     const err = new Error(data.error || 'Request failed');
     Object.assign(err, data);
     err.status = res.status;
+    if (res.status === 401 && typeof window !== 'undefined') {
+      const here = `${window.location.pathname}${window.location.search}`;
+      if (window.location.pathname !== '/login') {
+        window.sessionStorage.setItem('postLoginRedirect', here);
+      }
+    }
     throw err;
   }
   return data;
@@ -37,14 +44,14 @@ export const api = {
 
   // Sessions
   mySessions: () => request('GET', '/sessions/mine').then(r => r.sessions || []),
-  allSessions: (ageGroupId, eventId, date) => {
+  allSessions: (ageGroupId, eventId, date, options = {}) => {
     const p = new URLSearchParams();
     if (ageGroupId) p.append('age_group_id', ageGroupId);
     if (eventId)    p.append('event_id', eventId);
     if (date)       p.append('date', date);
-    return request('GET', `/sessions?${p}`);
+    return request('GET', `/sessions?${p}`, undefined, options);
   },
-  sessionPlayers:  (id)               => request('GET',    `/sessions/${id}/players`),
+  sessionPlayers:  (id, options = {}) => request('GET',    `/sessions/${id}/players`, undefined, options),
   sessionScorers:  (id)               => request('GET',    `/sessions/${id}/scorers`),
   sessionSiblings: (id)               => request('GET',    `/sessions/${id}/siblings`),
   createSession:   (data)             => request('POST',   '/sessions', data),
@@ -126,10 +133,28 @@ export const api = {
   importAssignmentsTemplate: (eventId) => `${BASE}/events/${eventId}/import/assignments-template`,
 
   // Export — event-scoped
-  exportTeamRecs:    (eventId, ageGroupId, includeNotes = true) =>
-    `${BASE}/events/${eventId}/export/team-recommendations?ageGroupId=${ageGroupId || ''}&includeNotes=${includeNotes}`,
-  exportSportsEngine: (eventId, ageGroupId) =>
-    `${BASE}/events/${eventId}/export/sportsengine?ageGroupId=${ageGroupId || ''}`,
+  exportTeamRecs:    (eventId, ageGroupId, includeNotes = true, filters = {}) => {
+    const p = new URLSearchParams();
+    if (ageGroupId) p.append('ageGroupId', ageGroupId);
+    p.append('includeNotes', String(includeNotes));
+    if (filters.finalizedOnly) p.append('finalizedOnly', 'true');
+    if (filters.outcome) p.append('outcome', filters.outcome);
+    return `${BASE}/events/${eventId}/export/team-recommendations?${p}`;
+  },
+  exportSportsEngine: (eventId, ageGroupId, filters = {}) => {
+    const p = new URLSearchParams();
+    if (ageGroupId) p.append('ageGroupId', ageGroupId);
+    if (filters.finalizedOnly) p.append('finalizedOnly', 'true');
+    if (filters.outcome) p.append('outcome', filters.outcome);
+    return `${BASE}/events/${eventId}/export/sportsengine?${p}`;
+  },
+  exportPreview: (eventId, type, ageGroupId, filters = {}) => {
+    const p = new URLSearchParams({ type });
+    if (ageGroupId) p.append('ageGroupId', ageGroupId);
+    if (filters.finalizedOnly) p.append('finalizedOnly', 'true');
+    if (filters.outcome) p.append('outcome', filters.outcome);
+    return request('GET', `/events/${eventId}/export/preview?${p}`);
+  },
 
   // Check-in
   checkin: (sessionId, playerId, checkedIn = true, attendanceStatus = undefined) =>

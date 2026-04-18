@@ -24,6 +24,7 @@ let adminUser;
 
 // Second fixture for cross-session test
 let otherFixture;
+let siblingSession;
 
 beforeAll(async () => {
   fixture      = await createEventFixture();
@@ -38,6 +39,13 @@ beforeAll(async () => {
   created.userIds.push(assignedScorer.id, unassignedScorer.id, coordinator.id, adminUser.id);
 
   await assignScorer(fixture.session.id, assignedScorer.id);
+
+  const siblingRes = await pool.query(
+    `INSERT INTO sessions (name, event_id, age_group_id, block_id, session_date, start_time, status, session_type)
+     VALUES ('Sibling Session',$1,$2,$3,'2099-01-01','11:00:00','active','skills') RETURNING *`,
+    [fixture.event.id, fixture.ageGroup.id, fixture.block.id]
+  );
+  siblingSession = siblingRes.rows[0];
 });
 
 afterAll(async () => {
@@ -142,25 +150,100 @@ describe('PATCH /api/session-players/move', () => {
     expect(res.status).toBe(403);
   });
 
-  it('admin can move a player between sessions', async () => {
-    // Add player to otherFixture session first so the move is valid
+  it('preserves check-in when requested', async () => {
     await pool.query(
-      `INSERT INTO session_players (session_id, player_id, registration_id) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`,
-      [otherFixture.session.id, fixture.player.id, fixture.registration.id]
-    ).catch(() => {});
+      `UPDATE session_players
+       SET checked_in = true, checked_in_at = NOW(), attendance_status = 'late_arrival'
+       WHERE session_id = $1 AND player_id = $2`,
+      [fixture.session.id, fixture.player.id]
+    );
 
     const res = await request(app)
       .patch('/api/session-players/move')
       .set('Cookie', adminUser.cookie)
       .send({
         playerId:       fixture.player.id,
-        fromSessionId:  otherFixture.session.id,
+        fromSessionId:  fixture.session.id,
+        toSessionId:    siblingSession.id,
+        keepCheckinStatus: true,
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.sessionPlayer.checked_in).toBe(true);
+    expect(res.body.sessionPlayer.attendance_status).toBe('late_arrival');
+  });
+
+  it('resets check-in when requested', async () => {
+    const res = await request(app)
+      .patch('/api/session-players/move')
+      .set('Cookie', adminUser.cookie)
+      .send({
+        playerId:       fixture.player.id,
+        fromSessionId:  siblingSession.id,
         toSessionId:    fixture.session.id,
         keepCheckinStatus: false,
       });
-    // 200 or 404 (player may not be on that roster) — what matters is not 403/401
-    expect([200, 400, 404, 409]).toContain(res.status);
-    expect(res.status).not.toBe(401);
-    expect(res.status).not.toBe(403);
+
+    expect(res.status).toBe(200);
+    expect(res.body.sessionPlayer.checked_in).toBe(false);
+    expect(res.body.sessionPlayer.attendance_status).toBe(null);
+  });
+
+  it('rejects cross-event or cross-age-group moves', async () => {
+    const res = await request(app)
+      .patch('/api/session-players/move')
+      .set('Cookie', adminUser.cookie)
+      .send({
+        playerId:       fixture.player.id,
+        fromSessionId:  fixture.session.id,
+        toSessionId:    otherFixture.session.id,
+        keepCheckinStatus: false,
+      });
+
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('PATCH /api/admin/sessions/:id/finalize', () => {
+  it('coordinator can mark scoring complete', async () => {
+    const res = await request(app)
+      .patch(`/api/admin/sessions/${fixture.session.id}/finalize`)
+      .set('Cookie', coordinator.cookie)
+      .send({ status: 'scoring_complete' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.session.status).toBe('scoring_complete');
+  });
+
+  it('coordinator cannot mark finalized', async () => {
+    const res = await request(app)
+      .patch(`/api/admin/sessions/${fixture.session.id}/finalize`)
+      .set('Cookie', coordinator.cookie)
+      .send({ status: 'finalized' });
+
+    expect(res.status).toBe(403);
+  });
+
+  it('admin can mark finalized', async () => {
+    const res = await request(app)
+      .patch(`/api/admin/sessions/${fixture.session.id}/finalize`)
+      .set('Cookie', adminUser.cookie)
+      .send({ status: 'finalized' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.session.status).toBe('finalized');
+    await pool.query(`UPDATE sessions SET status = 'active' WHERE id = $1`, [fixture.session.id]);
+  });
+});
+
+describe('GET /api/events/:eventId/export', () => {
+  it('returns a filtered CSV export', async () => {
+    const res = await request(app)
+      .get(`/api/events/${fixture.event.id}/export/team-recommendations?ageGroupId=${fixture.ageGroup.id}&finalizedOnly=true`)
+      .set('Cookie', adminUser.cookie);
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('text/csv');
+    expect(res.text).toContain('jersey_number,first_name,last_name');
   });
 });

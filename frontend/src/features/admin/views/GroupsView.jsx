@@ -75,6 +75,8 @@ export function SessionMiniCard({ sess, updateStatus, removeSession, onSaveSessi
             <option value="pending">Pending</option>
             <option value="active">Active</option>
             <option value="complete">Complete</option>
+            <option value="scoring_complete">Scoring Complete</option>
+            <option value="finalized">Finalized</option>
           </select>
           <button
             onClick={toggle}

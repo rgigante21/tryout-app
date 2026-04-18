@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 
 export default function Login() {
   const { login } = useAuth();
   const navigate   = useNavigate();
+  const location   = useLocation();
   const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
   const [error, setError]       = useState('');
@@ -16,6 +17,15 @@ export default function Login() {
     setLoading(true);
     try {
       const user = await login(email, password);
+      const storedRedirect = window.sessionStorage.getItem('postLoginRedirect');
+      window.sessionStorage.removeItem('postLoginRedirect');
+      const intended = location.state?.from
+        ? `${location.state.from.pathname || ''}${location.state.from.search || ''}`
+        : storedRedirect;
+      if (intended && intended !== '/login') {
+        navigate(intended, { replace: true });
+        return;
+      }
       if (user.role === 'admin' || user.role === 'coordinator') {
         navigate('/admin');
       } else {

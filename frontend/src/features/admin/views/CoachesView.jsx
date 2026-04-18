@@ -253,10 +253,11 @@ export default function CoachesView({
   const [pwVisible, setPwVisible] = useState(false);
   const [pwConfirm, setPwConfirm] = useState('');
 
+  const minPwLen   = (newCoach.role === 'admin' || newCoach.role === 'coordinator') ? 12 : 8;
   const pwMismatch = newCoach.password && pwConfirm && newCoach.password !== pwConfirm;
-  const pwTooShort = newCoach.password && newCoach.password.length < 6;
+  const pwTooShort = newCoach.password && newCoach.password.length < minPwLen;
   const canCreate  = newCoach.firstName && newCoach.lastName && newCoach.email &&
-                     newCoach.password && newCoach.password.length >= 6 &&
+                     newCoach.password && newCoach.password.length >= minPwLen &&
                      newCoach.password === pwConfirm && !addingCoach;
 
   const handleCreate = () => {
@@ -356,7 +357,7 @@ export default function CoachesView({
             <div style={{ position: 'relative' }}>
               <input
                 type={pwVisible ? 'text' : 'password'}
-                placeholder="Min 6 characters"
+                placeholder={`Min ${minPwLen} characters`}
                 value={newCoach.password}
                 onChange={(e) => setNewCoach((n) => ({ ...n, password: e.target.value }))}
                 style={pwTooShort ? { borderColor: 'var(--red)' } : {}}
@@ -369,7 +370,7 @@ export default function CoachesView({
                 {pwVisible ? 'Hide' : 'Show'}
               </button>
             </div>
-            {pwTooShort && <div style={{ fontSize: 11, color: 'var(--red-txt)', marginTop: 3 }}>Minimum 6 characters</div>}
+            {pwTooShort && <div style={{ fontSize: 11, color: 'var(--red-txt)', marginTop: 3 }}>Minimum {minPwLen} characters</div>}
           </div>
           <div style={{ flex: 1 }}>
             <label style={A.fieldLabel}>Confirm password</label>

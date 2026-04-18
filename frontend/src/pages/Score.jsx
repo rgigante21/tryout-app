@@ -8,6 +8,14 @@ const CRITERIA = [
   { key: 'hockeySense', label: 'Hockey Sense',  desc: 'Reading plays, positioning' },
 ];
 
+const SESSION_STATUS = {
+  pending: { label: 'Pending', style: 'badgePending' },
+  active: { label: 'Active', style: 'badgeActive' },
+  complete: { label: 'Complete', style: 'badgeGreen' },
+  scoring_complete: { label: 'Scoring Complete', style: 'badgeBlue' },
+  finalized: { label: 'Finalized', style: 'badgeLocked' },
+};
+
 // Format "HH:MM:SS" → "h:MM AM/PM"
 function fmtTime(t) {
   if (!t) return '';
@@ -92,6 +100,7 @@ export default function Score() {
   };
 
   const openPlayer = (p) => {
+    if (session?.status === 'finalized') return;
     setPlayer(p);
     const prev      = saved[p.id]  || {};
     const prevDraft = drafts[p.id] || {};
@@ -114,6 +123,7 @@ export default function Score() {
 
   const saveScore = async () => {
     if (!allScored) return;
+    if (session?.status === 'finalized') return;
     setSaving(true);
     try {
       await api.submitScore({
@@ -182,8 +192,8 @@ export default function Score() {
       {sessions.map(s => {
         const isPending  = s.status === 'pending';
         const isActive   = s.status === 'active';
-        const isComplete = s.status === 'complete';
-        const badgeStyle = isComplete ? styles.badgeGreen : isPending ? styles.badgePending : styles.badgeActive;
+        const meta = SESSION_STATUS[s.status] || SESSION_STATUS.pending;
+        const badgeStyle = styles[meta.style] || styles.badgePending;
         const cardExtra  = isActive
           ? { borderColor: 'var(--gold)', borderLeftWidth: 3, background: 'var(--bg2)' }
           : isPending
@@ -195,7 +205,7 @@ export default function Score() {
             <div style={styles.sessionTop}>
               <span style={styles.sessionAge}>{s.age_group}</span>
               <span style={{ ...styles.badge, ...badgeStyle }}>
-                {isPending ? '🔒 Pending' : isActive ? '● Active' : 'Complete'}
+                {isPending ? 'Locked' : isActive ? 'Active' : meta.label}
               </span>
             </div>
             <div style={styles.sessionName}>{s.name}</div>
@@ -203,6 +213,8 @@ export default function Score() {
               {fmtDate(s.session_date)} · {fmtTime(s.start_time)}
               {isPending
                 ? <span style={{ color: 'var(--gold-dark)', marginLeft: 6 }}>Opens 10 min before start</span>
+                : s.status === 'finalized'
+                  ? <span style={{ color: 'var(--maroon)', marginLeft: 6 }}>Locked</span>
                 : <span>{' · '}{s.score_count}/{s.player_count} scored</span>
               }
             </div>
@@ -326,6 +338,12 @@ export default function Score() {
         </div>
       </div>
 
+      {session.status === 'finalized' && (
+        <div style={styles.lockedBanner}>
+          Finalized session. Scores are locked.
+        </div>
+      )}
+
       <div style={styles.legend}>
         <div style={styles.legendItem}><div style={{ ...styles.dot, background: 'var(--bg3)',     border: '1px solid var(--border)' }} />Not scored</div>
         <div style={styles.legendItem}><div style={{ ...styles.dot, background: 'var(--amber-bg)', border: '1px solid var(--amber)' }} />Incomplete</div>
@@ -363,9 +381,11 @@ export default function Score() {
               <button
                 key={p.id}
                 onClick={() => openPlayer(p)}
+                disabled={session.status === 'finalized'}
                 style={{
                   ...btnStyle(btnState(p)),
                   ...(isDupe ? styles.numBtnDupe : {}),
+                  ...(session.status === 'finalized' ? styles.numBtnDisabled : {}),
                 }}
               >
                 {isDupe ? (
@@ -457,6 +477,9 @@ const styles = {
 
   badgePending: { background: 'var(--bg3)', color: 'var(--text3)', border: '1px solid var(--border)' },
   badgeActive:  { background: 'var(--gold-bg)', color: 'var(--gold-txt)', border: '1px solid var(--gold-dark)' },
+  badgeLocked:  { background: 'var(--maroon-bg)', color: 'var(--maroon)', border: '1px solid var(--maroon)' },
+  lockedBanner: { fontSize: 12, fontWeight: 700, color: 'var(--maroon)', background: 'var(--maroon-bg)', border: '1px solid var(--maroon)', borderRadius: 'var(--radius-sm)', padding: '8px 12px', marginBottom: 12, textAlign: 'center' },
+  numBtnDisabled: { cursor: 'not-allowed', opacity: 0.75 },
 
   // Pending lock screen
   lockCard:   { background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '36px 28px', textAlign: 'center', marginTop: 16 },

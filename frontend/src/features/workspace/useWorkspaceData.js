@@ -9,9 +9,9 @@ export function useWorkspaceData(eventId, ageGroupId) {
   const [loading, setLoading] = useState(true);
   const [toggling, setToggling] = useState(new Set());
 
-  const fetchAll = useCallback(async (signal) => {
+  const fetchAll = useCallback(async (signal, silent = false) => {
     if (!eventId || !ageGroupId) return;
-    setLoading(true);
+    if (!silent) setLoading(true);
     try {
       const [sessRes, playRes, rankRes] = await Promise.all([
         api.allSessions(ageGroupId, eventId),
@@ -39,28 +39,35 @@ export function useWorkspaceData(eventId, ageGroupId) {
     } catch (err) {
       if (!signal?.aborted) console.error(err);
     } finally {
-      if (!signal?.aborted) setLoading(false);
+      if (!signal?.aborted && !silent) setLoading(false);
     }
   }, [eventId, ageGroupId]);
 
   useEffect(() => {
     const controller = new AbortController();
     fetchAll(controller.signal);
-    return () => controller.abort();
+    const timer = setInterval(() => fetchAll(controller.signal, true), 15_000);
+    return () => {
+      controller.abort();
+      clearInterval(timer);
+    };
   }, [fetchAll]);
 
   const refreshAll = useCallback(() => fetchAll(), [fetchAll]);
 
-  const handleToggleCheckIn = async (sessionId, player) => {
+  const handleToggleCheckIn = async (sessionId, player, attendanceStatus) => {
     const key = `${sessionId}-${player.id}`;
     setToggling((prev) => new Set([...prev, key]));
     try {
-      const newVal = !player.checked_in;
-      await api.checkin(sessionId, player.id, newVal);
+      const nextStatus = attendanceStatus === undefined
+        ? (player.checked_in ? '' : 'checked_in')
+        : attendanceStatus;
+      const checkedIn = nextStatus === 'checked_in' || nextStatus === 'late_arrival';
+      await api.checkin(sessionId, player.id, checkedIn, nextStatus || null);
       setCheckInPlayers((prev) => ({
         ...prev,
         [sessionId]: (prev[sessionId] || []).map((p) =>
-          p.id === player.id ? { ...p, checked_in: newVal } : p
+          p.id === player.id ? { ...p, checked_in: checkedIn, attendance_status: nextStatus || null } : p
         ),
       }));
     } catch (err) {

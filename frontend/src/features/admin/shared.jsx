@@ -28,6 +28,8 @@ export const STATUS_META = {
   pending: { dot: '#aaa', label: 'Pending', textColor: 'var(--text3)', bg: 'var(--bg3)', border: 'var(--border)' },
   active: { dot: 'var(--gold)', label: 'Active', textColor: 'var(--amber-txt)', bg: 'var(--amber-bg)', border: 'var(--amber)' },
   complete: { dot: 'var(--green)', label: 'Complete', textColor: 'var(--green-txt)', bg: 'var(--green-bg)', border: 'var(--green)' },
+  scoring_complete: { dot: 'var(--blue)', label: 'Scoring Complete', textColor: 'var(--blue-txt)', bg: 'var(--blue-bg)', border: 'var(--blue)' },
+  finalized: { dot: 'var(--maroon)', label: 'Finalized', textColor: 'var(--maroon)', bg: 'var(--maroon-bg)', border: 'var(--maroon)' },
 };
 
 export const NAV_ITEMS = [
@@ -239,6 +241,8 @@ export function SessionCard({
               <option value="pending">Pending</option>
               <option value="active">Active</option>
               <option value="complete">Complete</option>
+              <option value="scoring_complete">Scoring Complete</option>
+              <option value="finalized">Finalized</option>
             </select>
             <button onClick={() => startEditSession(sess)} style={A.iconBtn} title="Edit">✎</button>
             <button onClick={() => removeSession(sess.id)} style={{ ...A.iconBtn, color: 'var(--red-txt)' }} title="Delete">×</button>

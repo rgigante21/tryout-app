@@ -61,7 +61,7 @@ function buildApp() {
   app.use('/api/session-players', require('../routes/session-players'));
   app.use('/api/scores',          require('../routes/scores'));
   app.use('/api/admin',           require('../routes/admin'));
-  app.use('/api/import',          require('../routes/import'));
+  app.use('/api/events',          require('../routes/export'));
 
   app.get('/health', (_req, res) => res.json({ status: 'ok' }));
   app.use((_req, res) => res.status(404).json({ error: 'Not found' }));

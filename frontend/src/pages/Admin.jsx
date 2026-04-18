@@ -352,7 +352,9 @@ export default function Admin() {
 
   const updateStatus = async (sessionId, status) => {
     try {
-      const r = await api.updateSession(sessionId, { status });
+      const r = ['scoring_complete', 'finalized'].includes(status)
+        ? await api.finalizeSession(sessionId, status)
+        : await api.updateSession(sessionId, { status });
       const updater = (list) => list.map((item) => (item.id === sessionId ? { ...item, status: r.session.status } : item));
       setSessions(updater);
       setAllSessions(updater);
@@ -873,6 +875,7 @@ export default function Admin() {
               assignScorer={assignScorer}
               unassignScorer={unassignScorer}
               onChangeAssignment={changeBlockAssignment}
+              user={user}
             />
           )}
 
@@ -907,6 +910,7 @@ export default function Admin() {
               assignScorer={assignScorer}
               unassignScorer={unassignScorer}
               onChangeAssignment={changeBlockAssignment}
+              user={user}
             />
           )}
 

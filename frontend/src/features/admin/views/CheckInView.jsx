@@ -1,7 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import { api } from '../../../utils/api';
 import { A } from '../styles';
 import { fmt } from '../shared';
+
+const ATTENDANCE_OPTIONS = [
+  { value: 'checked_in', label: 'Checked in' },
+  { value: 'late_arrival', label: 'Late arrival' },
+  { value: 'no_show', label: 'No show' },
+  { value: 'excused', label: 'Excused' },
+];
 
 export default function CheckInView({ activeEvent, ageGroups }) {
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -10,10 +17,11 @@ export default function CheckInView({ activeEvent, ageGroups }) {
   const [loading, setLoading] = useState(false);
   const [toggling, setToggling] = useState(new Set());
   const [activeTab, setActiveTab] = useState('all');
+  const [lastRefresh, setLastRefresh] = useState(null);
 
-  useEffect(() => {
+  const loadData = useCallback((silent = false) => {
     if (!activeEvent) return;
-    setLoading(true);
+    if (!silent) setLoading(true);
     api.allSessions(null, activeEvent.id, date)
       .then(async (r) => {
         const list = (r.sessions || []).filter(
@@ -32,21 +40,28 @@ export default function CheckInView({ activeEvent, ageGroups }) {
         } else {
           setPlayers({});
         }
+        setLastRefresh(new Date());
       })
       .catch(() => { setSessions([]); setPlayers({}); })
-      .finally(() => setLoading(false));
+      .finally(() => { if (!silent) setLoading(false); });
   }, [activeEvent, date]);
 
-  const handleToggle = async (sessionId, player) => {
+  useEffect(() => {
+    loadData(false);
+    const timer = setInterval(() => loadData(true), 15_000);
+    return () => clearInterval(timer);
+  }, [loadData]);
+
+  const updateAttendance = async (sessionId, player, attendanceStatus) => {
     const key = `${sessionId}-${player.id}`;
     setToggling((prev) => new Set([...prev, key]));
     try {
-      const newVal = !player.checked_in;
-      await api.checkin(sessionId, player.id, newVal);
+      const checkedIn = attendanceStatus === 'checked_in' || attendanceStatus === 'late_arrival';
+      await api.checkin(sessionId, player.id, checkedIn, attendanceStatus || null);
       setPlayers((prev) => ({
         ...prev,
         [sessionId]: (prev[sessionId] || []).map((p) =>
-          p.id === player.id ? { ...p, checked_in: newVal } : p
+          p.id === player.id ? { ...p, checked_in: checkedIn, attendance_status: attendanceStatus || null } : p
         ),
       }));
     } catch (err) {
@@ -59,6 +74,8 @@ export default function CheckInView({ activeEvent, ageGroups }) {
       });
     }
   };
+
+  const handleToggle = (sessionId, player) => updateAttendance(sessionId, player, player.checked_in ? '' : 'checked_in');
 
   const tabs = [{ id: 'all', label: 'All' }, ...ageGroups.map((g) => ({ id: String(g.id), label: g.name }))];
 
@@ -108,6 +125,11 @@ export default function CheckInView({ activeEvent, ageGroups }) {
           onChange={(e) => setDate(e.target.value)}
           style={{ fontSize: 12, padding: '6px 10px', borderRadius: 6, width: 'auto' }}
         />
+        {lastRefresh && (
+          <span style={{ fontSize: 12, color: 'var(--text3)' }}>
+            Updated {lastRefresh.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })}
+          </span>
+        )}
       </div>
 
       {loading && (
@@ -247,6 +269,17 @@ export default function CheckInView({ activeEvent, ageGroups }) {
                             >
                               {isToggling ? '…' : player.checked_in ? '✓ Checked In' : 'Check In'}
                             </button>
+                            <select
+                              value={player.attendance_status || (player.checked_in ? 'checked_in' : '')}
+                              onChange={(e) => updateAttendance(sess.id, player, e.target.value)}
+                              disabled={isToggling}
+                              style={{ width: 140, minHeight: 30, fontSize: 12 }}
+                            >
+                              <option value="">Not checked in</option>
+                              {ATTENDANCE_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>{option.label}</option>
+                              ))}
+                            </select>
                           </div>
                         );
                       })}

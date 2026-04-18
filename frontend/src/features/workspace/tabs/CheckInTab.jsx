@@ -1,6 +1,13 @@
 import { A } from '../../admin/styles';
 import { fmt } from '../../admin/shared';
 
+const ATTENDANCE_OPTIONS = [
+  { value: 'checked_in', label: 'Checked in' },
+  { value: 'late_arrival', label: 'Late arrival' },
+  { value: 'no_show', label: 'No show' },
+  { value: 'excused', label: 'Excused' },
+];
+
 export default function CheckInTab({ sessions, playersBySessionId, loading, onToggle, toggling }) {
   if (loading) {
     return (
@@ -125,6 +132,17 @@ export default function CheckInTab({ sessions, playersBySessionId, loading, onTo
                         >
                           {isToggling ? '…' : player.checked_in ? '✓ Checked In' : 'Check In'}
                         </button>
+                        <select
+                          value={player.attendance_status || (player.checked_in ? 'checked_in' : '')}
+                          onChange={(e) => onToggle(sess.id, player, e.target.value)}
+                          disabled={isToggling}
+                          style={{ width: 140, minHeight: 30, fontSize: 12 }}
+                        >
+                          <option value="">Not checked in</option>
+                          {ATTENDANCE_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>{option.label}</option>
+                          ))}
+                        </select>
                       </div>
                     );
                   })}

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api } from '../../../utils/api';
 import { A } from '../styles';
 
@@ -85,10 +85,11 @@ function DropZone({ onUpload, loading, accept = '.csv,.xlsx' }) {
 
 function SummaryCards({ summary }) {
   const cards = [
-    { label: 'Total rows',   value: summary.total,   color: 'var(--text)'       },
-    { label: 'Valid',        value: summary.valid,   color: 'var(--green-txt)'  },
-    { label: 'Updates',      value: summary.updates, color: 'var(--blue-txt)'   },
-    { label: 'Errors',       value: summary.errors,  color: 'var(--red-txt)'    },
+    { label: 'Total rows', value: summary.total ?? 0, color: 'var(--text)' },
+    { label: 'Added', value: summary.added ?? summary.valid ?? 0, color: 'var(--green-txt)' },
+    { label: 'Updated', value: summary.updated ?? summary.updates ?? 0, color: 'var(--blue-txt)' },
+    { label: 'Skipped', value: summary.skipped ?? 0, color: 'var(--text3)' },
+    { label: 'Errored', value: summary.errored ?? summary.errors ?? 0, color: 'var(--red-txt)' },
   ];
   return (
     <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
@@ -379,6 +380,22 @@ function ImportTab({ eventId, importType, ageGroups, label, templateUrl }) {
 function ExportTab({ eventId, ageGroups }) {
   const [ageGroupId, setAgeGroupId] = useState('');
   const [includeNotes, setIncludeNotes] = useState(true);
+  const [finalizedOnly, setFinalizedOnly] = useState(false);
+  const [outcome, setOutcome] = useState('');
+  const [preview, setPreview] = useState({ team: null, sportsengine: null });
+  const filters = { finalizedOnly, outcome };
+
+  useEffect(() => {
+    let ignore = false;
+    setPreview({ team: null, sportsengine: null });
+    Promise.all([
+      api.exportPreview(eventId, 'team-recommendations', ageGroupId || null, filters).catch(() => ({ rowCount: null })),
+      api.exportPreview(eventId, 'sportsengine', ageGroupId || null, filters).catch(() => ({ rowCount: null })),
+    ]).then(([team, sportsengine]) => {
+      if (!ignore) setPreview({ team: team.rowCount, sportsengine: sportsengine.rowCount });
+    });
+    return () => { ignore = true; };
+  }, [eventId, ageGroupId, finalizedOnly, outcome]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -395,6 +412,29 @@ function ExportTab({ eventId, ageGroups }) {
         </select>
       </div>
 
+      <div style={{ display: 'flex', gap: 16, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={finalizedOnly}
+            onChange={e => setFinalizedOnly(e.target.checked)}
+            style={{ width: 'auto', minHeight: 'auto' }}
+          />
+          Finalized sessions only
+        </label>
+        <div>
+          <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text3)', display: 'block', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            Outcome
+          </label>
+          <select value={outcome} onChange={e => setOutcome(e.target.value)} style={{ maxWidth: 220 }}>
+            <option value="">Any outcome</option>
+            <option value="moved_up">Moved up</option>
+            <option value="retained">Retained</option>
+            <option value="left_program">Left program</option>
+          </select>
+        </div>
+      </div>
+
       {/* Export: Team Recommendations */}
       <div style={{
         padding: '20px', borderRadius: 12,
@@ -402,7 +442,7 @@ function ExportTab({ eventId, ageGroups }) {
       }}>
         <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 6 }}>Team Recommendations</div>
         <div style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 14 }}>
-          Full tryout results with scores, averages, and outcomes. For internal admin use.
+          Tryout results with scores, averages, and outcomes. {preview.team === null ? 'Counting rows...' : `${preview.team} rows match these filters.`}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
@@ -415,7 +455,7 @@ function ExportTab({ eventId, ageGroups }) {
             Include scorer notes
           </label>
           <a
-            href={api.exportTeamRecs(eventId, ageGroupId || null, includeNotes)}
+            href={api.exportTeamRecs(eventId, ageGroupId || null, includeNotes, filters)}
             style={A.primaryBtn}
           >
             Download CSV
@@ -430,11 +470,10 @@ function ExportTab({ eventId, ageGroups }) {
       }}>
         <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 6 }}>SportsEngine Roster</div>
         <div style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 14 }}>
-          SportsEngine-compatible format for downstream roster handling. Includes only tryout participants.
-          Shot hand (L/R → Left/Right), gender (M/F → male/female), and dates (MM/DD/YYYY) are formatted for SportsEngine.
+          SportsEngine roster exchange with profile ID, player details, jersey, position, and shot hand. {preview.sportsengine === null ? 'Counting rows...' : `${preview.sportsengine} rows match these filters.`}
         </div>
         <a
-          href={api.exportSportsEngine(eventId, ageGroupId || null)}
+          href={api.exportSportsEngine(eventId, ageGroupId || null, filters)}
           style={A.primaryBtn}
         >
           Download CSV

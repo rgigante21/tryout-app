@@ -149,6 +149,9 @@ router.patch('/:id', authMiddleware, requireRole('admin', 'coordinator'), async 
   if (status && !['pending', 'active', 'complete', 'scoring_complete', 'finalized'].includes(status)) {
     return res.status(400).json({ error: 'Invalid status value' });
   }
+  if (status === 'finalized' && req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Only admins can finalize sessions' });
+  }
   try {
     const r = await pool.query(
       `UPDATE sessions
@@ -302,7 +305,11 @@ router.patch('/:id/players/:playerId/checkin', authMiddleware, requireRole('admi
       `UPDATE session_players
        SET checked_in        = $1,
            checked_in_at     = CASE WHEN $1 = true THEN NOW() ELSE NULL END,
-           attendance_status = COALESCE($4, attendance_status)
+           attendance_status = CASE
+             WHEN $4::text IS NOT NULL THEN $4
+             WHEN $1 = true THEN 'checked_in'
+             ELSE NULL
+           END
        WHERE session_id = $2 AND (player_id = $3 OR registration_id = $5)
        RETURNING *`,
       [!!checkedIn, sessionId, playerId, attendanceStatus || null, registrationId]
@@ -318,7 +325,7 @@ router.patch('/:id/players/:playerId/checkin', authMiddleware, requireRole('admi
       const insert = await pool.query(
         `INSERT INTO session_players (session_id, player_id, registration_id, checked_in, checked_in_at, attendance_status)
          VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-        [sessionId, playerId, derivedReg, !!checkedIn, checkedIn ? new Date() : null, attendanceStatus || null]
+        [sessionId, playerId, derivedReg, !!checkedIn, checkedIn ? new Date() : null, attendanceStatus ?? (checkedIn ? 'checked_in' : null)]
       );
       return res.json({ sessionPlayer: insert.rows[0], walkin: true });
     }

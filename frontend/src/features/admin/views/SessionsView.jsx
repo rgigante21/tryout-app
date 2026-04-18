@@ -20,12 +20,20 @@ const GAME_ASSIGNMENTS = [
   { method: 'manual', label: 'Manual' },
 ];
 
+const ATTENDANCE_LABEL = {
+  checked_in: 'Checked in',
+  late_arrival: 'Late arrival',
+  no_show: 'No show',
+  excused: 'Excused',
+};
+
 function SessionTile({
   sess, scorers, users,
   onSaveSession,
   updateStatus, removeSession,
   assigningTo, setAssigningTo, assignUserId, setAssignUserId,
   assignScorer, unassignScorer, onChangeAssignment,
+  user,
 }) {
   const [expanded, setExpanded] = useState(false);
   const [draft, setDraft] = useState(null);
@@ -33,32 +41,48 @@ function SessionTile({
   const [changingAssignment, setChangingAssignment] = useState(false);
   const [sessionPlayers, setSessionPlayers] = useState(null);
   const [loadingPlayers, setLoadingPlayers] = useState(false);
+  const [completion, setCompletion] = useState(null);
+  const [movePlayer, setMovePlayer] = useState(null);
+  const [siblings, setSiblings] = useState([]);
+  const [moveTargetId, setMoveTargetId] = useState('');
+  const [preserveCheckin, setPreserveCheckin] = useState(true);
+  const [moving, setMoving] = useState(false);
 
   const sm = STATUS_META[sess.status] || STATUS_META.pending;
   const typeStyle = TYPE_STYLE[sess.session_type] || TYPE_STYLE.skills;
   const isAssigning = assigningTo === sess.id;
   const assignable = users.filter((u) => !scorers.find((sc) => sc.id === u.id));
+  const isFinalized = sess.status === 'finalized';
+  const canFinalize = user?.role === 'admin';
 
   const toggle = async () => {
     const next = !expanded;
     setExpanded(next);
-    if (!next) { setDraft(null); return; }
+    if (!next) { setDraft(null); setMovePlayer(null); return; }
     setLoadingPlayers(true);
     try {
-      const r = await api.sessionPlayers(sess.id);
-      setSessionPlayers(r.players || []);
+      const [playersRes, completionRes] = await Promise.all([
+        api.sessionPlayers(sess.id),
+        api.sessionCompletion(sess.id),
+      ]);
+      setSessionPlayers(playersRes.players || []);
+      setCompletion(completionRes);
     } catch {
       setSessionPlayers([]);
+      setCompletion(null);
     } finally {
       setLoadingPlayers(false);
     }
   };
 
-  const openEdit = () => setDraft({
+  const openEdit = () => {
+    if (isFinalized) return;
+    setDraft({
     name: sess.name,
     date: sess.session_date ? sess.session_date.slice(0, 10) : '',
     time: sess.start_time ? sess.start_time.slice(0, 5) : '',
-  });
+    });
+  };
   const cancelEdit = () => setDraft(null);
   const saveEdit = async () => {
     if (!draft.name || !draft.date) return;
@@ -74,6 +98,7 @@ function SessionTile({
   };
 
   const doAssignment = async (payload) => {
+    if (isFinalized) return;
     setChangingAssignment(true);
     try {
       await onChangeAssignment(sess.block_id, payload);
@@ -84,6 +109,55 @@ function SessionTile({
     } finally {
       setChangingAssignment(false);
     }
+  };
+
+  const refreshExpandedData = async () => {
+    const [playersRes, completionRes] = await Promise.all([
+      api.sessionPlayers(sess.id),
+      api.sessionCompletion(sess.id),
+    ]);
+    setSessionPlayers(playersRes.players || []);
+    setCompletion(completionRes);
+  };
+
+  const openMove = async (player) => {
+    if (isFinalized) return;
+    setMovePlayer(player);
+    setMoveTargetId('');
+    setPreserveCheckin(Boolean(player.checked_in));
+    try {
+      const r = await api.sessionSiblings(sess.id);
+      setSiblings(r.sessions || []);
+    } catch (err) {
+      alert(err.message);
+      setSiblings([]);
+    }
+  };
+
+  const submitMove = async () => {
+    if (!movePlayer || !moveTargetId) return;
+    if (movePlayer.checked_in && !window.confirm('Move this checked-in player?')) return;
+    setMoving(true);
+    try {
+      await api.movePlayer({
+        playerId: movePlayer.id,
+        fromSessionId: sess.id,
+        toSessionId: parseInt(moveTargetId, 10),
+        keepCheckinStatus: preserveCheckin,
+      });
+      await refreshExpandedData();
+      setMovePlayer(null);
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setMoving(false);
+    }
+  };
+
+  const handleStatusChange = (nextStatus) => {
+    if (nextStatus === 'finalized' && !canFinalize) return;
+    if (nextStatus === 'finalized' && !window.confirm('Finalize this session? Scores and roster edits will be locked for normal users.')) return;
+    updateStatus(sess.id, nextStatus);
   };
 
   return (
@@ -133,12 +207,14 @@ function SessionTile({
           </div>
           <select
             value={sess.status}
-            onChange={(e) => updateStatus(sess.id, e.target.value)}
+            onChange={(e) => handleStatusChange(e.target.value)}
             style={{ ...A.statusSelect, background: sm.bg, color: sm.textColor, border: `1px solid ${sm.border}` }}
           >
             <option value="pending">Pending</option>
             <option value="active">Active</option>
             <option value="complete">Complete</option>
+            <option value="scoring_complete">Scoring Complete</option>
+            {canFinalize && <option value="finalized">Finalized</option>}
           </select>
           <button
             onClick={toggle}
@@ -163,7 +239,7 @@ function SessionTile({
             <section>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                 <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--maroon)' }}>Session Details</div>
-                {!draft && <button onClick={openEdit} style={A.ghostBtn}>Edit</button>}
+                {!draft && <button onClick={openEdit} disabled={isFinalized} style={{ ...A.ghostBtn, opacity: isFinalized ? 0.5 : 1 }}>Edit</button>}
                 {draft && (
                   <div style={{ display: 'flex', gap: 6 }}>
                     <button onClick={saveEdit} disabled={saving || !draft.name || !draft.date} style={A.saveBtn}>{saving ? 'Saving…' : 'Save'}</button>
@@ -195,6 +271,43 @@ function SessionTile({
               )}
             </section>
 
+            {isFinalized && (
+              <div style={{ padding: '10px 12px', borderRadius: 8, background: 'var(--maroon-bg)', border: '1px solid var(--maroon)', color: 'var(--maroon)', fontSize: 13, fontWeight: 700 }}>
+                Finalized session. Normal score and roster edits are locked.
+              </div>
+            )}
+
+            {completion?.totals && (
+              <section>
+                <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--maroon)', marginBottom: 10 }}>
+                  Operations
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(120px, 1fr))', gap: 8 }}>
+                  {[
+                    ['Scorers', scorers.length],
+                    ['Checked in', `${completion.totals.checked_in_count || 0}/${completion.totals.total_players || 0}`],
+                    ['With scores', completion.totals.players_with_any_score || 0],
+                    ['Missing scores', completion.totals.players_missing_scores || 0],
+                  ].map(([label, value]) => (
+                    <div key={label} style={{ padding: 10, border: '1px solid var(--border)', borderRadius: 8, background: '#fff' }}>
+                      <div style={{ fontSize: 18, fontWeight: 800, color: label === 'Missing scores' && value > 0 ? 'var(--red-txt)' : 'var(--text)' }}>{value}</div>
+                      <div style={{ fontSize: 11, color: 'var(--text3)', textTransform: 'uppercase' }}>{label}</div>
+                    </div>
+                  ))}
+                </div>
+                {completion.perScorer?.length > 0 && (
+                  <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 5 }}>
+                    {completion.perScorer.map((scorer) => (
+                      <div key={scorer.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text2)' }}>
+                        <span>{scorer.first_name} {scorer.last_name}</span>
+                        <strong>{scorer.scores_submitted}/{scorer.total_players}</strong>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+            )}
+
             {/* Players + Assignment + Scorers in columns */}
             <div style={{ display: 'grid', gridTemplateColumns: `1fr${sess.block_id && onChangeAssignment ? ' 200px' : ''} 220px`, gap: 20, alignItems: 'start' }}>
 
@@ -218,8 +331,45 @@ function SessionTile({
                         {p.scored && (
                           <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 10, background: 'var(--green-bg)', color: 'var(--green-txt)', border: '1px solid var(--green)', flexShrink: 0 }}>✓</span>
                         )}
+                        <span style={{ fontSize: 11, color: p.checked_in ? 'var(--green-txt)' : 'var(--text3)', flexShrink: 0 }}>
+                          {ATTENDANCE_LABEL[p.attendance_status] || (p.checked_in ? 'Checked in' : 'Not in')}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => openMove(p)}
+                          disabled={isFinalized}
+                          style={{ ...A.ghostBtn, fontSize: 11, padding: '3px 8px', opacity: isFinalized ? 0.45 : 1 }}
+                        >
+                          Move
+                        </button>
                       </div>
                     ))}
+                  </div>
+                )}
+                {movePlayer && (
+                  <div style={{ marginTop: 10, padding: 12, border: '1px solid var(--border)', borderRadius: 8, background: '#fff' }}>
+                    <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 4 }}>
+                      Move #{movePlayer.jersey_number} {movePlayer.first_name} {movePlayer.last_name}
+                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 8 }}>
+                      Current check-in: {ATTENDANCE_LABEL[movePlayer.attendance_status] || (movePlayer.checked_in ? 'Checked in' : 'Not checked in')}
+                    </div>
+                    <select value={moveTargetId} onChange={(e) => setMoveTargetId(e.target.value)} style={{ marginBottom: 8 }}>
+                      <option value="">Destination session...</option>
+                      {siblings.map((sibling) => (
+                        <option key={sibling.id} value={sibling.id}>{sibling.name} ({STATUS_META[sibling.status]?.label || sibling.status})</option>
+                      ))}
+                    </select>
+                    {movePlayer.checked_in && (
+                      <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12, marginBottom: 8 }}>
+                        <input type="checkbox" checked={preserveCheckin} onChange={(e) => setPreserveCheckin(e.target.checked)} style={{ width: 'auto', minHeight: 'auto' }} />
+                        Preserve check-in state
+                      </label>
+                    )}
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button onClick={submitMove} disabled={!moveTargetId || moving} style={A.saveBtn}>{moving ? 'Moving...' : 'Move player'}</button>
+                      <button onClick={() => setMovePlayer(null)} style={A.ghostBtn}>Cancel</button>
+                    </div>
                   </div>
                 )}
               </section>
@@ -238,9 +388,9 @@ function SessionTile({
                     {(sess.session_type === 'skills' ? SPLIT_METHODS : GAME_ASSIGNMENTS).map(({ method, label }) => (
                       <button
                         key={method}
-                        disabled={changingAssignment}
+                        disabled={changingAssignment || isFinalized}
                         onClick={() => doAssignment(sess.session_type === 'skills' ? { splitMethod: method } : { playerAssignment: method })}
-                        style={{ ...A.ghostBtn, fontSize: 12, padding: '6px 10px', textAlign: 'left', opacity: changingAssignment ? 0.5 : 1 }}
+                        style={{ ...A.ghostBtn, fontSize: 12, padding: '6px 10px', textAlign: 'left', opacity: changingAssignment || isFinalized ? 0.5 : 1 }}
                       >
                         {label}
                       </button>
@@ -256,7 +406,7 @@ function SessionTile({
                   {scorers.map((u) => (
                     <span key={u.id} style={A.scorerChip}>
                       {u.first_name} {u.last_name}
-                      <button onClick={() => unassignScorer(sess.id, u.id)} style={A.chipX}>×</button>
+                      <button onClick={() => unassignScorer(sess.id, u.id)} disabled={isFinalized} style={A.chipX}>×</button>
                     </span>
                   ))}
                   {isAssigning ? (
@@ -273,7 +423,7 @@ function SessionTile({
                       </div>
                     </div>
                   ) : (
-                    <button onClick={() => { setAssigningTo(sess.id); setAssignUserId(''); }} style={A.addScorerBtn}>+ Add scorer</button>
+                    <button disabled={isFinalized} onClick={() => { setAssigningTo(sess.id); setAssignUserId(''); }} style={{ ...A.addScorerBtn, opacity: isFinalized ? 0.5 : 1 }}>+ Add scorer</button>
                   )}
                 </div>
               </section>
@@ -376,6 +526,7 @@ export default function SessionsView({
   updateStatus, removeSession,
   assigningTo, setAssigningTo, assignUserId, setAssignUserId,
   assignScorer, unassignScorer, onChangeAssignment,
+  user,
 }) {
   const allSessionCount = filteredSessions.length;
 
@@ -471,6 +622,7 @@ export default function SessionsView({
                 assignUserId={assignUserId} setAssignUserId={setAssignUserId}
                 assignScorer={assignScorer} unassignScorer={unassignScorer}
                 onChangeAssignment={onChangeAssignment}
+                user={user}
               />
             ))}
           </div>
