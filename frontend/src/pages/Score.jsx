@@ -147,13 +147,15 @@ export default function Score() {
     if (saved[p.id]?.complete) return 'complete';
     const d = drafts[p.id];
     if (d && CRITERIA.some(c => d[c.key] != null)) return 'partial';
+    if (!p.checked_in) return 'not_present';
     return 'default';
   };
 
   const btnStyle = (state) => ({
     ...styles.numBtn,
-    ...(state === 'complete' ? styles.numComplete : {}),
-    ...(state === 'partial'  ? styles.numPartial  : {}),
+    ...(state === 'complete'    ? styles.numComplete   : {}),
+    ...(state === 'partial'     ? styles.numPartial    : {}),
+    ...(state === 'not_present' ? styles.numNotPresent : {}),
   });
 
   const scored  = Object.values(saved).filter(s => s.complete).length;
@@ -348,6 +350,7 @@ export default function Score() {
         <div style={styles.legendItem}><div style={{ ...styles.dot, background: 'var(--bg3)',     border: '1px solid var(--border)' }} />Not scored</div>
         <div style={styles.legendItem}><div style={{ ...styles.dot, background: 'var(--amber-bg)', border: '1px solid var(--amber)' }} />Incomplete</div>
         <div style={styles.legendItem}><div style={{ ...styles.dot, background: 'var(--green-bg)', border: '1px solid var(--green)' }} />Complete</div>
+        <div style={styles.legendItem}><div style={{ ...styles.dot, background: 'var(--bg3)', border: '1px dashed var(--border)', opacity: 0.4 }} />Not checked in</div>
       </div>
 
       <div style={styles.progressWrap}>
@@ -381,7 +384,7 @@ export default function Score() {
               <button
                 key={p.id}
                 onClick={() => openPlayer(p)}
-                disabled={session.status === 'finalized'}
+                disabled={session.status === 'finalized' || btnState(p) === 'not_present'}
                 style={{
                   ...btnStyle(btnState(p)),
                   ...(isDupe ? styles.numBtnDupe : {}),
@@ -454,6 +457,7 @@ const styles = {
   },
   numComplete: { background: 'var(--green-bg)',  border: '1px solid var(--green)',  color: 'var(--green-txt)'  },
   numPartial:  { background: 'var(--amber-bg)',  border: '1px solid var(--amber)',  color: 'var(--amber-txt)'  },
+  numNotPresent: { opacity: 0.3, borderStyle: 'dashed', cursor: 'not-allowed' },
   numBtnDupe:   { flexDirection: 'column', gap: 1 },
   numBtnJersey: { fontSize: '15px', fontWeight: 700, lineHeight: 1 },
   numBtnName:   { fontSize: '9px', fontWeight: 600, letterSpacing: '0.03em', textTransform: 'uppercase', opacity: 0.8, lineHeight: 1 },
