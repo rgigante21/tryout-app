@@ -11,39 +11,42 @@
  */
 
 const request = require('supertest');
-const { buildApp, createUser, createEventFixture, assignScorer, cleanup, pool } = require('./helpers');
+const { buildApp, createOrg, createUser, createEventFixture, assignScorer, cleanup, pool } = require('./helpers');
 
 const app = buildApp();
-const created = { userIds: [], eventIds: [], ageGroupIds: [] };
+const created = { userIds: [], eventIds: [], ageGroupIds: [], orgIds: [] };
 
+let testOrg;
 let fixture;
 let assignedScorer;
 let unassignedScorer;
 let coordinator;
 let adminUser;
 
-// Second fixture for cross-session test
 let otherFixture;
 let siblingSession;
 
 beforeAll(async () => {
-  fixture      = await createEventFixture();
-  otherFixture = await createEventFixture();
+  testOrg = await createOrg();
+  created.orgIds.push(testOrg.id);
+
+  fixture      = await createEventFixture(testOrg.id);
+  otherFixture = await createEventFixture(testOrg.id);
   created.eventIds.push(fixture.event.id, otherFixture.event.id);
   created.ageGroupIds.push(fixture.ageGroup.id, otherFixture.ageGroup.id);
 
-  assignedScorer   = await createUser({ role: 'scorer' });
-  unassignedScorer = await createUser({ role: 'scorer' });
-  coordinator      = await createUser({ role: 'coordinator' });
-  adminUser        = await createUser({ role: 'admin' });
+  assignedScorer   = await createUser({ orgId: testOrg.id, role: 'scorer' });
+  unassignedScorer = await createUser({ orgId: testOrg.id, role: 'scorer' });
+  coordinator      = await createUser({ orgId: testOrg.id, role: 'coordinator' });
+  adminUser        = await createUser({ orgId: testOrg.id, role: 'admin' });
   created.userIds.push(assignedScorer.id, unassignedScorer.id, coordinator.id, adminUser.id);
 
   await assignScorer(fixture.session.id, assignedScorer.id);
 
   const siblingRes = await pool.query(
-    `INSERT INTO sessions (name, event_id, age_group_id, block_id, session_date, start_time, status, session_type)
-     VALUES ('Sibling Session',$1,$2,$3,'2099-01-01','11:00:00','active','skills') RETURNING *`,
-    [fixture.event.id, fixture.ageGroup.id, fixture.block.id]
+    `INSERT INTO sessions (organization_id, name, event_id, age_group_id, block_id, session_date, start_time, status, session_type)
+     VALUES ($1,'Sibling Session',$2,$3,$4,'2099-01-01','11:00:00','active','skills') RETURNING *`,
+    [testOrg.id, fixture.event.id, fixture.ageGroup.id, fixture.block.id]
   );
   siblingSession = siblingRes.rows[0];
 });

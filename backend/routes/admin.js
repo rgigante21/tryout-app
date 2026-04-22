@@ -13,7 +13,10 @@ const guard  = [authMiddleware, requireRole('admin', 'coordinator')];
 
 router.get('/age-groups', ...guard, async (req, res) => {
   try {
-    const r = await pool.query('SELECT * FROM age_groups ORDER BY sort_order');
+    const r = await pool.query(
+      'SELECT * FROM age_groups WHERE organization_id = $1 ORDER BY sort_order',
+      [req.org_id]
+    );
     res.json({ ageGroups: r.rows });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
@@ -27,8 +30,8 @@ router.post('/age-groups', ...guard, async (req, res) => {
   }
   try {
     const r = await pool.query(
-      `INSERT INTO age_groups (name, code, sort_order) VALUES ($1, $2, $3) RETURNING *`,
-      [name, code.toUpperCase(), sortOrder || 0]
+      `INSERT INTO age_groups (organization_id, name, code, sort_order) VALUES ($1, $2, $3, $4) RETURNING *`,
+      [req.org_id, name, code.toUpperCase(), sortOrder || 0]
     );
     res.status(201).json({ ageGroup: r.rows[0] });
   } catch (err) {
@@ -41,7 +44,10 @@ router.post('/age-groups', ...guard, async (req, res) => {
 
 router.get('/events', ...guard, async (req, res) => {
   try {
-    const r = await pool.query('SELECT * FROM tryout_events ORDER BY start_date DESC');
+    const r = await pool.query(
+      'SELECT * FROM tryout_events WHERE organization_id = $1 ORDER BY start_date DESC',
+      [req.org_id]
+    );
     res.json({ events: r.rows });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
@@ -55,9 +61,9 @@ router.post('/events', ...guard, async (req, res) => {
   }
   try {
     const r = await pool.query(
-      `INSERT INTO tryout_events (name, season, start_date, end_date)
-       VALUES ($1, $2, $3, $4) RETURNING *`,
-      [name, season, startDate, endDate]
+      `INSERT INTO tryout_events (organization_id, name, season, start_date, end_date)
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [req.org_id, name, season, startDate, endDate]
     );
     res.status(201).json({ event: r.rows[0] });
   } catch (err) {
@@ -72,8 +78,10 @@ router.patch('/events/:id/archive', ...guard, async (req, res) => {
       `UPDATE tryout_events
        SET archived    = $1,
            archived_at = CASE WHEN $1 = true THEN NOW() ELSE NULL END
-       WHERE id = $2 RETURNING *`,
-      [!!archive, req.params.id]
+       WHERE id = $2
+         AND organization_id = $3
+       RETURNING *`,
+      [!!archive, req.params.id, req.org_id]
     );
     if (!r.rows[0]) return res.status(404).json({ error: 'Event not found' });
     res.json({ event: r.rows[0] });
@@ -86,7 +94,10 @@ router.get('/events/:id/stats', ...guard, async (req, res) => {
   const { id } = req.params;
   try {
     const [eventRes, ageRes, playerRes, sessionRes, scoreRes] = await Promise.all([
-      pool.query('SELECT * FROM tryout_events WHERE id = $1', [id]),
+      pool.query(
+        'SELECT * FROM tryout_events WHERE id = $1 AND organization_id = $2',
+        [id, req.org_id]
+      ),
       pool.query(`
         SELECT ag.name, ag.code, ag.sort_order,
           COUNT(DISTINCT per.id)::int AS players,
@@ -101,14 +112,16 @@ router.get('/events/:id/stats', ...guard, async (req, res) => {
          AND per.event_id = $1
         LEFT JOIN sessions s ON s.age_group_id = ag.id AND s.event_id = $1
         LEFT JOIN scores sc  ON sc.session_id = s.id
+        WHERE ag.organization_id = $2
         GROUP BY ag.id ORDER BY ag.sort_order
-      `, [id]),
+      `, [id, req.org_id]),
       pool.query('SELECT COUNT(*)::int AS total FROM player_event_registrations WHERE event_id = $1', [id]),
-      pool.query('SELECT COUNT(*)::int AS total FROM sessions WHERE event_id = $1', [id]),
+      pool.query('SELECT COUNT(*)::int AS total FROM sessions WHERE event_id = $1 AND organization_id = $2', [id, req.org_id]),
       pool.query(`
         SELECT COUNT(DISTINCT sc.id)::int AS total
-        FROM scores sc JOIN sessions s ON s.id = sc.session_id WHERE s.event_id = $1
-      `, [id]),
+        FROM scores sc JOIN sessions s ON s.id = sc.session_id
+        WHERE s.event_id = $1 AND s.organization_id = $2
+      `, [id, req.org_id]),
     ]);
     if (!eventRes.rows[0]) return res.status(404).json({ error: 'Event not found' });
     res.json({
@@ -131,12 +144,16 @@ router.patch('/players/:id/outcome', ...guard, async (req, res) => {
   const valid = ['moved_up', 'retained', 'left_program', null];
   if (!valid.includes(outcome)) return res.status(400).json({ error: 'Invalid outcome' });
   try {
+    // Verify the registration belongs to this org via its event
     const r = await pool.query(
-      `UPDATE player_event_registrations
+      `UPDATE player_event_registrations per
        SET outcome = $1, updated_at = NOW()
-       WHERE id = $2
-       RETURNING *`,
-      [outcome, req.params.id]
+       FROM tryout_events te
+       WHERE per.id = $2
+         AND per.event_id = te.id
+         AND te.organization_id = $3
+       RETURNING per.*`,
+      [outcome, req.params.id, req.org_id]
     );
     if (!r.rows[0]) return res.status(404).json({ error: 'Player not found' });
     res.json({ player: r.rows[0] });
@@ -146,7 +163,8 @@ router.patch('/players/:id/outcome', ...guard, async (req, res) => {
 });
 
 router.get('/players', ...guard, async (req, res) => {
-  const { age_group_id, event_id } = req.query;
+  const age_group_id = req.query.age_group_id || req.query.ageGroupId;
+  const event_id = req.query.event_id || req.query.eventId;
   if (!age_group_id || !event_id) {
     return res.status(400).json({ error: 'age_group_id and event_id required' });
   }
@@ -169,10 +187,12 @@ router.get('/players', ...guard, async (req, res) => {
          per.event_id
        FROM player_event_registrations per
        JOIN players p ON p.id = per.player_id
+       JOIN tryout_events te ON te.id = per.event_id
        WHERE per.age_group_id = $1
          AND per.event_id = $2
+         AND te.organization_id = $3
        ORDER BY per.jersey_number NULLS LAST, p.last_name, p.first_name`,
-      [age_group_id, event_id]
+      [age_group_id, event_id, req.org_id]
     );
     res.json({ players: r.rows });
   } catch (err) {
@@ -189,7 +209,16 @@ router.post('/players', ...guard, async (req, res) => {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      const player = await findOrCreatePlayer(client, { firstName, lastName });
+      // Verify event belongs to this org
+      const eventCheck = await client.query(
+        'SELECT id FROM tryout_events WHERE id = $1 AND organization_id = $2',
+        [eventId, req.org_id]
+      );
+      if (!eventCheck.rows[0]) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'Event not found' });
+      }
+      const player = await findOrCreatePlayer(client, { firstName, lastName, orgId: req.org_id });
       const registration = await upsertPlayerRegistration(client, {
         playerId: player.id,
         eventId,
@@ -234,20 +263,28 @@ router.delete('/players/:id', ...guard, async (req, res) => {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
+      // Verify the registration belongs to this org via its event
       const lookup = await client.query(
-        'SELECT player_id FROM player_event_registrations WHERE id = $1',
-        [req.params.id]
+        `SELECT per.player_id FROM player_event_registrations per
+         JOIN tryout_events te ON te.id = per.event_id
+         WHERE per.id = $1 AND te.organization_id = $2`,
+        [req.params.id, req.org_id]
       );
-      const playerId = lookup.rows[0]?.player_id;
+      if (!lookup.rows[0]) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'Player not found' });
+      }
+      const playerId = lookup.rows[0].player_id;
       await client.query('DELETE FROM player_event_registrations WHERE id = $1', [req.params.id]);
       if (playerId) {
         await client.query(
           `DELETE FROM players p
            WHERE p.id = $1
+             AND p.organization_id = $2
              AND NOT EXISTS (
                SELECT 1 FROM player_event_registrations per WHERE per.player_id = p.id
              )`,
-          [playerId]
+          [playerId, req.org_id]
         );
       }
       await client.query('COMMIT');
@@ -272,6 +309,15 @@ router.post('/players/bulk', ...guard, async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    // Verify event belongs to this org
+    const eventCheck = await client.query(
+      'SELECT id FROM tryout_events WHERE id = $1 AND organization_id = $2',
+      [eventId, req.org_id]
+    );
+    if (!eventCheck.rows[0]) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Event not found' });
+    }
     for (const p of players) {
       if (!p.firstName || !p.lastName || !p.jerseyNumber) {
         errors.push({ ...p, reason: 'Missing fields' }); continue;
@@ -280,6 +326,7 @@ router.post('/players/bulk', ...guard, async (req, res) => {
         const player = await findOrCreatePlayer(client, {
           firstName: p.firstName.trim(),
           lastName: p.lastName.trim(),
+          orgId: req.org_id,
         });
         const registration = await upsertPlayerRegistration(client, {
           playerId: player.id,
@@ -321,7 +368,10 @@ router.get('/users', ...guard, async (req, res) => {
   try {
     const r = await pool.query(
       `SELECT id, email, first_name, last_name, role
-       FROM users ORDER BY last_name, first_name`
+       FROM users
+       WHERE organization_id = $1
+       ORDER BY last_name, first_name`,
+      [req.org_id]
     );
     res.json({ users: r.rows });
   } catch (err) {
@@ -332,7 +382,6 @@ router.get('/users', ...guard, async (req, res) => {
 /**
  * POST /api/admin/users — admin-only account creation.
  * Replaces the removed public POST /api/auth/register.
- * Minimum password: 12 chars for admin/coordinator; 8 for scorer.
  */
 router.post('/users', authMiddleware, requireRole('admin'), async (req, res) => {
   const { email, password, firstName, lastName, role } = req.body || {};
@@ -362,16 +411,16 @@ router.post('/users', authMiddleware, requireRole('admin'), async (req, res) => 
   try {
     const hashed = await bcrypt.hash(password, 12);
     const result = await pool.query(
-      `INSERT INTO users (email, password, first_name, last_name, role)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO users (organization_id, email, password, first_name, last_name, role)
+       VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING id, email, first_name, last_name, role`,
-      [normalizedEmail, hashed, firstName.trim(), lastName.trim(), assignedRole]
+      [req.org_id, normalizedEmail, hashed, firstName.trim(), lastName.trim(), assignedRole]
     );
     await logAudit('account_created', req.user.id, {
       newUserId: result.rows[0].id,
       email: normalizedEmail,
       role: assignedRole,
-    });
+    }, req.org_id);
     return res.status(201).json({ user: result.rows[0] });
   } catch (err) {
     if (err.code === '23505') {
@@ -410,8 +459,9 @@ router.patch('/users/:id', ...guard, async (req, res) => {
     }
     if (!fields.length) return res.status(400).json({ error: 'Nothing to update' });
     vals.push(req.params.id);
+    vals.push(req.org_id);
     const r = await pool.query(
-      `UPDATE users SET ${fields.join(',')} WHERE id=$${i} RETURNING id,email,first_name,last_name,role`,
+      `UPDATE users SET ${fields.join(',')} WHERE id=$${i} AND organization_id=$${i + 1} RETURNING id,email,first_name,last_name,role`,
       vals
     );
     if (!r.rows[0]) return res.status(404).json({ error: 'User not found' });
@@ -420,12 +470,12 @@ router.patch('/users/:id', ...guard, async (req, res) => {
       await logAudit('role_changed', req.user.id, {
         targetUserId: parseInt(req.params.id),
         newRole: role,
-      });
+      }, req.org_id);
     }
     if (password) {
       await logAudit('password_changed', req.user.id, {
         targetUserId: parseInt(req.params.id),
-      });
+      }, req.org_id);
     }
 
     return res.json({ user: r.rows[0] });
@@ -446,8 +496,9 @@ router.get('/users/:id/sessions', ...guard, async (req, res) => {
       JOIN sessions s ON s.id = ss.session_id
       JOIN age_groups ag ON ag.id = s.age_group_id
       WHERE ss.user_id = $1
+        AND s.organization_id = $2
       ORDER BY s.session_date, s.start_time
-    `, [req.params.id]);
+    `, [req.params.id, req.org_id]);
     res.json({ sessions: r.rows });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
@@ -456,11 +507,6 @@ router.get('/users/:id/sessions', ...guard, async (req, res) => {
 
 // ── Session finalization ──────────────────────────────────────────────────────
 
-/**
- * PATCH /api/admin/sessions/:id/finalize
- * Transition a session to scoring_complete or finalized status.
- * Only admins can finalize (coordinators can mark scoring_complete).
- */
 router.patch('/sessions/:id/finalize', authMiddleware, requireRole('admin', 'coordinator'), async (req, res) => {
   const { status } = req.body;
   const validTransitions = ['scoring_complete', 'finalized'];
@@ -474,15 +520,15 @@ router.patch('/sessions/:id/finalize', authMiddleware, requireRole('admin', 'coo
 
   try {
     const r = await pool.query(
-      `UPDATE sessions SET status = $1 WHERE id = $2 RETURNING *`,
-      [status, req.params.id]
+      `UPDATE sessions SET status = $1 WHERE id = $2 AND organization_id = $3 RETURNING *`,
+      [status, req.params.id, req.org_id]
     );
     if (!r.rows[0]) return res.status(404).json({ error: 'Session not found' });
 
     await logAudit('session_status_changed', req.user.id, {
       sessionId: parseInt(req.params.id),
       newStatus: status,
-    });
+    }, req.org_id);
 
     res.json({ session: r.rows[0] });
   } catch (err) {
@@ -493,13 +539,16 @@ router.patch('/sessions/:id/finalize', authMiddleware, requireRole('admin', 'coo
 
 // ── Scorer completion stats ───────────────────────────────────────────────────
 
-/**
- * GET /api/admin/sessions/:id/completion
- * Returns completion tracking for a session: total players, checked-in, scored per scorer.
- */
 router.get('/sessions/:id/completion', ...guard, async (req, res) => {
   const sessionId = parseInt(req.params.id);
   try {
+    // Verify session belongs to this org
+    const sessionCheck = await pool.query(
+      'SELECT id FROM sessions WHERE id = $1 AND organization_id = $2',
+      [sessionId, req.org_id]
+    );
+    if (!sessionCheck.rows[0]) return res.status(404).json({ error: 'Session not found' });
+
     const [totalsRes, perScorerRes] = await Promise.all([
       pool.query(`
         SELECT

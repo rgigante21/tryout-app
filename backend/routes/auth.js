@@ -27,8 +27,10 @@ function cookieOptions() {
 }
 
 // ── POST /api/auth/login ──────────────────────────────────────────────────────
+// Accepts { email, password, subdomain }.
+// subdomain is optional in Phase 0.1 (single org). In Phase 0.2+ it will be required.
 router.post('/login', authLimiter, async (req, res) => {
-  const { email, password } = req.body || {};
+  const { email, password, subdomain } = req.body || {};
 
   if (!email || typeof email !== 'string' || !password || typeof password !== 'string') {
     return res.status(400).json({ error: 'Email and password are required' });
@@ -37,10 +39,35 @@ router.post('/login', authLimiter, async (req, res) => {
   const normalizedEmail = email.toLowerCase().trim();
 
   try {
-    const result = await pool.query(
-      'SELECT id, email, password, first_name, last_name, role FROM users WHERE email = $1',
-      [normalizedEmail]
-    );
+    let orgId = null;
+
+    if (subdomain && typeof subdomain === 'string') {
+      const orgRes = await pool.query(
+        'SELECT id FROM organizations WHERE subdomain = $1 AND archived_at IS NULL',
+        [subdomain.toLowerCase().trim()]
+      );
+      if (!orgRes.rows[0]) {
+        // Return the same generic error to avoid org enumeration
+        await logAudit('login_failure', null, { email: normalizedEmail, subdomain }, 1);
+        return res.status(401).json({ error: 'Invalid email or password' });
+      }
+      orgId = orgRes.rows[0].id;
+    }
+
+    // Phase 0.1: if no subdomain provided, look up user across orgs (single-org scenario).
+    // Phase 0.2 will require subdomain and remove this fallback.
+    const userQuery = orgId
+      ? `SELECT u.id, u.email, u.password, u.first_name, u.last_name, u.role, u.organization_id,
+               o.name AS org_name
+           FROM users u JOIN organizations o ON o.id = u.organization_id
+          WHERE u.email = $1 AND u.organization_id = $2`
+      : `SELECT u.id, u.email, u.password, u.first_name, u.last_name, u.role, u.organization_id,
+               o.name AS org_name
+           FROM users u JOIN organizations o ON o.id = u.organization_id
+          WHERE u.email = $1`;
+    const userParams = orgId ? [normalizedEmail, orgId] : [normalizedEmail];
+
+    const result = await pool.query(userQuery, userParams);
     const user = result.rows[0];
 
     // Use a dummy compare when user not found to prevent timing attacks
@@ -55,18 +82,21 @@ router.post('/login', authLimiter, async (req, res) => {
       valid = false;
     }
 
+    const resolvedOrgId = user?.organization_id || orgId || 1;
+
     if (!user || !valid) {
-      await logAudit('login_failure', null, { email: normalizedEmail });
+      await logAudit('login_failure', null, { email: normalizedEmail }, resolvedOrgId);
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
     const token = jwt.sign(
       {
-        id:        user.id,
-        email:     user.email,
-        role:      user.role,
-        firstName: user.first_name,
-        lastName:  user.last_name,
+        id:             user.id,
+        email:          user.email,
+        role:           user.role,
+        firstName:      user.first_name,
+        lastName:       user.last_name,
+        organization_id: user.organization_id,
       },
       JWT_SECRET,
       { expiresIn: TOKEN_TTL_S }
@@ -75,15 +105,17 @@ router.post('/login', authLimiter, async (req, res) => {
     // Set HttpOnly cookie — do NOT expose the raw token to JS
     res.cookie('auth_token', token, cookieOptions());
 
-    await logAudit('login_success', user.id, { email: user.email, role: user.role });
+    await logAudit('login_success', user.id, { email: user.email, role: user.role }, user.organization_id);
 
     return res.json({
       user: {
-        id:        user.id,
-        email:     user.email,
-        firstName: user.first_name,
-        lastName:  user.last_name,
-        role:      user.role,
+        id:              user.id,
+        email:           user.email,
+        firstName:       user.first_name,
+        lastName:        user.last_name,
+        role:            user.role,
+        organization_id: user.organization_id,
+        org_name:        user.org_name,
       },
     });
   } catch (err) {
@@ -94,7 +126,7 @@ router.post('/login', authLimiter, async (req, res) => {
 
 // ── POST /api/auth/logout ─────────────────────────────────────────────────────
 router.post('/logout', authMiddleware, async (req, res) => {
-  await logAudit('logout', req.user.id, { email: req.user.email });
+  await logAudit('logout', req.user.id, { email: req.user.email }, req.user.organization_id);
   res.clearCookie('auth_token', { path: '/' });
   return res.json({ success: true });
 });
@@ -103,7 +135,10 @@ router.post('/logout', authMiddleware, async (req, res) => {
 router.get('/me', authMiddleware, async (req, res) => {
   try {
     const result = await pool.query(
-      'SELECT id, email, first_name, last_name, role FROM users WHERE id = $1',
+      `SELECT u.id, u.email, u.first_name, u.last_name, u.role, u.organization_id,
+              o.name AS org_name
+         FROM users u JOIN organizations o ON o.id = u.organization_id
+        WHERE u.id = $1`,
       [req.user.id]
     );
     if (!result.rows[0]) {

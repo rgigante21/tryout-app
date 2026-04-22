@@ -14,11 +14,13 @@ export function AuthProvider({ children }) {
       .then(data => {
         const u = data.user;
         setUser({
-          id:        u.id,
-          email:     u.email,
-          firstName: u.first_name ?? u.firstName,
-          lastName:  u.last_name  ?? u.lastName,
-          role:      u.role,
+          id:              u.id,
+          email:           u.email,
+          firstName:       u.first_name ?? u.firstName,
+          lastName:        u.last_name  ?? u.lastName,
+          role:            u.role,
+          organization_id: u.organization_id,
+          orgName:         u.org_name ?? u.orgName,
         });
       })
       .catch(() => {
@@ -30,9 +32,15 @@ export function AuthProvider({ children }) {
 
   async function login(email, password) {
     const data = await api.login(email, password);
-    // Server sets the HttpOnly cookie; we just store user profile in memory
-    setUser(data.user);
-    return data.user;
+    // Server sets the HttpOnly cookie; we just store user profile in memory.
+    // Normalise org_name → orgName so both sources (login + /me) have the same shape.
+    const u = data.user;
+    const normalised = {
+      ...u,
+      orgName: u.org_name ?? u.orgName,
+    };
+    setUser(normalised);
+    return normalised;
   }
 
   const logout = useCallback(async () => {

@@ -4,6 +4,8 @@ const cookieParser = require('cookie-parser');
 const { startScheduler } = require('./scheduler');
 
 const { buildCors, apiLimiter, importUploadLimiter, requestId, helmetMiddleware } = require('./middleware/security');
+const { authMiddleware } = require('./middleware/auth');
+const { orgMiddleware } = require('./middleware/org');
 
 const authRoutes              = require('./routes/auth');
 const sessionRoutes           = require('./routes/sessions');
@@ -67,19 +69,22 @@ app.use('/api/auth', (req, res, next) => {
   next();
 }, authRoutes);
 
-app.use('/api/sessions',             sessionRoutes);
-app.use('/api/session-blocks',       sessionBlockRoutes);
-app.use('/api/session-players',      sessionPlayerRoutes);
-app.use('/api/scores',               scoreRoutes);
-app.use('/api/admin',                adminRoutes);
+// orgMiddleware runs after authMiddleware so req.user contains organization_id.
+// Mounted here as a shared router-level middleware for all API routes
+// that require tenant context (everything except /api/auth/* and /health).
+app.use('/api/sessions',             authMiddleware, orgMiddleware, sessionRoutes);
+app.use('/api/session-blocks',       authMiddleware, orgMiddleware, sessionBlockRoutes);
+app.use('/api/session-players',      authMiddleware, orgMiddleware, sessionPlayerRoutes);
+app.use('/api/scores',               authMiddleware, orgMiddleware, scoreRoutes);
+app.use('/api/admin',                authMiddleware, orgMiddleware, adminRoutes);
 // Upload endpoint gets a tighter rate limit (10/min); other import routes use apiLimiter
 app.post('/api/events/:eventId/import/upload', importUploadLimiter);
 // Event-scoped import/export routes: /api/events/:eventId/import/... and /api/events/:eventId/export/...
-app.use('/api/events',               importRoutes);
-app.use('/api/events',               exportRoutes);
+app.use('/api/events',               authMiddleware, orgMiddleware, importRoutes);
+app.use('/api/events',               authMiddleware, orgMiddleware, exportRoutes);
 // Legacy import routes (deprecated — kept for WorkspacePage/GroupsView backward compatibility)
-app.use('/api/import',               importLegacyRoutes);
-app.use('/api/evaluation-templates', evaluationTemplateRoutes);
+app.use('/api/import',               authMiddleware, orgMiddleware, importLegacyRoutes);
+app.use('/api/evaluation-templates', authMiddleware, orgMiddleware, evaluationTemplateRoutes);
 
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 

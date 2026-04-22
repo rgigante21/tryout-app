@@ -13,24 +13,28 @@
  */
 
 const request = require('supertest');
-const { buildApp, createUser, createEventFixture, assignScorer, cleanup, pool } = require('./helpers');
+const { buildApp, createOrg, createUser, createEventFixture, assignScorer, cleanup, pool } = require('./helpers');
 
 const app = buildApp();
-const created = { userIds: [], eventIds: [], ageGroupIds: [] };
+const created = { userIds: [], eventIds: [], ageGroupIds: [], orgIds: [] };
 
-let fixture;       // { event, ageGroup, block, session, player }
+let testOrg;
+let fixture;
 let assignedScorer;
 let unassignedScorer;
 let adminUser;
 
 beforeAll(async () => {
-  fixture = await createEventFixture();
+  testOrg = await createOrg();
+  created.orgIds.push(testOrg.id);
+
+  fixture = await createEventFixture(testOrg.id);
   created.eventIds.push(fixture.event.id);
   created.ageGroupIds.push(fixture.ageGroup.id);
 
-  assignedScorer   = await createUser({ role: 'scorer' });
-  unassignedScorer = await createUser({ role: 'scorer' });
-  adminUser        = await createUser({ role: 'admin' });
+  assignedScorer   = await createUser({ orgId: testOrg.id, role: 'scorer' });
+  unassignedScorer = await createUser({ orgId: testOrg.id, role: 'scorer' });
+  adminUser        = await createUser({ orgId: testOrg.id, role: 'admin' });
   created.userIds.push(assignedScorer.id, unassignedScorer.id, adminUser.id);
 
   await assignScorer(fixture.session.id, assignedScorer.id);
@@ -113,10 +117,10 @@ describe('POST /api/scores (unassigned scorer)', () => {
 
 describe('POST /api/scores (player not on roster)', () => {
   it('returns 403 when player is not on the session roster', async () => {
-    // Insert a player in the same age group but NOT into session_players
     const pR = await pool.query(
-      `INSERT INTO players (first_name, last_name)
-       VALUES ('Ghost','Player') RETURNING id`
+      `INSERT INTO players (organization_id, first_name, last_name)
+       VALUES ($1,'Ghost','Player') RETURNING id`,
+      [testOrg.id]
     );
     const ghostPlayerId = pR.rows[0].id;
 
@@ -134,7 +138,6 @@ describe('POST /api/scores (player not on roster)', () => {
 
     expect(res.status).toBe(403);
 
-    // cleanup ghost player
     await pool.query('DELETE FROM player_event_registrations WHERE player_id = $1', [ghostPlayerId]);
     await pool.query('DELETE FROM players WHERE id = $1', [ghostPlayerId]);
   });
@@ -156,7 +159,6 @@ describe('POST /api/scores (admin)', () => {
 
 describe('POST /api/scores (finalized session)', () => {
   it('returns 403 when session is finalized and caller is a scorer', async () => {
-    // Temporarily finalize the session
     await pool.query(`UPDATE sessions SET status='finalized' WHERE id=$1`, [fixture.session.id]);
 
     const res = await request(app)
@@ -164,7 +166,6 @@ describe('POST /api/scores (finalized session)', () => {
       .set('Cookie', assignedScorer.cookie)
       .send(validScore());
 
-    // Restore
     await pool.query(`UPDATE sessions SET status='active' WHERE id=$1`, [fixture.session.id]);
 
     expect(res.status).toBe(403);

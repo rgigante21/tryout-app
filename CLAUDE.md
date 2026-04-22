@@ -51,6 +51,13 @@ DB_HOST=localhost DB_USER=postgres DB_PASS=postgres DB_NAME=tryoutapp \
 ```
 Tests live in `backend/tests/` and require a live Postgres DB. Use `moduleNameMapper` in Jest config to alias `bcrypt` → `bcryptjs` (pure JS) so tests run on macOS without the Docker-compiled Linux native binary.
 
+**Run the static multi-tenant query audit:**
+```bash
+node scripts/audit-tenancy.js
+# or from backend/: npm run audit-tenancy
+```
+Scans all route/middleware/util files and flags any query on a Class 1 table that lacks `organization_id` scoping. Exits non-zero in CI. Add `/* tenant-global: reason */` to suppress intentional global queries (e.g. scheduler).
+
 ## Database Credentials
 
 The Postgres superuser is `postgres` (no separate `tryout` role). Database name is `tryoutapp`. Always use `-U postgres -d tryoutapp` when connecting via `docker exec`.
@@ -64,6 +71,10 @@ Applied in order. Fresh installs pick up everything via `postgres/init.sql` auto
 | `001_production_readiness.sql` | ✅ Applied | audit_log, attendance_status, scoring_complete/finalized session statuses |
 | `002_player_shot_and_import_fields.sql` | ✅ Applied | shot, date_of_birth, external_id, gender on players; partial unique index on external_id |
 | `003_drop_jersey_unique_constraint.sql` | ✅ Applied | Drops jersey uniqueness constraint; adds non-unique index |
+| `004_session_blocks.sql` | ✅ Applied | session_blocks table, block_type/split_method/session_type columns |
+| `005_evaluation_templates.sql` | ✅ Applied | evaluation_templates + evaluation_criteria tables |
+| `006_import_batches.sql` | ✅ Applied | import_batches + import_batch_rows tables |
+| `007_multi_tenant_foundation.sql` | ⏳ Pending | organizations table; organization_id on all Class 1 tables; RLS policies; consistency triggers; composite indexes |
 
 ## Default Credentials
 

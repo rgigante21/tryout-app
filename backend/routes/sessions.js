@@ -63,7 +63,10 @@ router.get('/', authMiddleware, requireRole('admin', 'coordinator'), async (req,
     if (event_id)     { conditions.push(`s.event_id = $${params.length + 1}`);     params.push(event_id); }
     if (date)         { conditions.push(`s.session_date = $${params.length + 1}`); params.push(date); }
 
-    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    // Always scope to the current org
+    conditions.push(`s.organization_id = $${params.length + 1}`);
+    params.push(req.org_id);
+    const where = `WHERE ${conditions.join(' AND ')}`;
 
     const result = await pool.query(`
       SELECT
@@ -127,10 +130,18 @@ router.post('/', authMiddleware, requireRole('admin', 'coordinator'), async (req
     return res.status(400).json({ error: 'eventId, ageGroupId, name, sessionDate, and startTime are required' });
   }
   try {
+    // Derive organization_id from the event (enforced by DB trigger too)
+    const eventRes = await pool.query(
+      'SELECT organization_id FROM tryout_events WHERE id = $1 AND organization_id = $2',
+      [eventId, req.org_id]
+    );
+    if (!eventRes.rows[0]) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
     const r = await pool.query(
-      `INSERT INTO sessions (event_id, age_group_id, name, session_date, start_time, session_type, status)
-       VALUES ($1, $2, $3, $4, $5, $6, 'pending') RETURNING *`,
-      [eventId, ageGroupId, name, sessionDate, startTime, sessionType]
+      `INSERT INTO sessions (organization_id, event_id, age_group_id, name, session_date, start_time, session_type, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending') RETURNING *`,
+      [req.org_id, eventId, ageGroupId, name, sessionDate, startTime, sessionType]
     );
     await syncEventDates(eventId);
     res.status(201).json({ session: r.rows[0] });
@@ -160,8 +171,10 @@ router.patch('/:id', authMiddleware, requireRole('admin', 'coordinator'), async 
            session_date = COALESCE($3, session_date),
            start_time   = COALESCE($4, start_time),
            session_type = COALESCE($5, session_type)
-       WHERE id = $6 RETURNING *`,
-      [status || null, name || null, sessionDate || null, startTime || null, sessionType || null, req.params.id]
+       WHERE id = $6
+         AND organization_id = $7
+       RETURNING *`,
+      [status || null, name || null, sessionDate || null, startTime || null, sessionType || null, req.params.id, req.org_id]
     );
     if (!r.rows[0]) return res.status(404).json({ error: 'Session not found' });
     await syncEventDates(r.rows[0].event_id);
@@ -175,9 +188,13 @@ router.patch('/:id', authMiddleware, requireRole('admin', 'coordinator'), async 
 // DELETE /api/sessions/:id
 router.delete('/:id', authMiddleware, requireRole('admin', 'coordinator'), async (req, res) => {
   try {
-    const lookup = await pool.query('SELECT event_id FROM sessions WHERE id = $1', [req.params.id]);
-    const eventId = lookup.rows[0]?.event_id;
-    await pool.query('DELETE FROM sessions WHERE id = $1', [req.params.id]);
+    const lookup = await pool.query(
+      'SELECT event_id FROM sessions WHERE id = $1 AND organization_id = $2',
+      [req.params.id, req.org_id]
+    );
+    if (!lookup.rows[0]) return res.status(404).json({ error: 'Session not found' });
+    const eventId = lookup.rows[0].event_id;
+    await pool.query('DELETE FROM sessions WHERE id = $1 AND organization_id = $2', [req.params.id, req.org_id]);
     if (eventId) await syncEventDates(eventId);
     res.json({ success: true });
   } catch (err) {
@@ -197,8 +214,9 @@ router.get('/:id/players', authMiddleware, requireAssignedSessionAccess(), async
       `SELECT s.*, ag.name AS age_group, ag.code AS age_group_code
        FROM sessions s
        JOIN age_groups ag ON ag.id = s.age_group_id
-       WHERE s.id = $1`,
-      [sessionId]
+       WHERE s.id = $1
+         AND s.organization_id = $2`,
+      [sessionId, req.org_id]
     );
     if (!sessionResult.rows[0]) return res.status(404).json({ error: 'Session not found' });
     const session = sessionResult.rows[0];

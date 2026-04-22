@@ -1,3 +1,9 @@
+/**
+ * All player lookups and creates are org-scoped.
+ * orgId must be passed by callers — it is derived from the event's organization_id
+ * or from req.org_id on the request.
+ */
+
 async function findOrCreatePlayer(client, {
   firstName,
   lastName,
@@ -6,6 +12,7 @@ async function findOrCreatePlayer(client, {
   externalId = null,
   shot = null,
   birthYear = null,
+  orgId,
 }) {
   let player = null;
 
@@ -13,8 +20,9 @@ async function findOrCreatePlayer(client, {
     const existing = await client.query(
       `SELECT *
        FROM players
-       WHERE external_id = $1`,
-      [externalId]
+       WHERE external_id = $1
+         AND organization_id = $2`,
+      [externalId, orgId]
     );
     player = existing.rows[0] || null;
   }
@@ -24,9 +32,10 @@ async function findOrCreatePlayer(client, {
       `SELECT *
        FROM players
        WHERE lower(first_name) = lower($1)
-         AND lower(last_name) = lower($2)
-         AND date_of_birth = $3`,
-      [firstName, lastName, dateOfBirth]
+         AND lower(last_name)  = lower($2)
+         AND date_of_birth     = $3
+         AND organization_id   = $4`,
+      [firstName, lastName, dateOfBirth, orgId]
     );
     player = existing.rows[0] || null;
   }
@@ -34,10 +43,10 @@ async function findOrCreatePlayer(client, {
   if (!player) {
     const inserted = await client.query(
       `INSERT INTO players
-         (first_name, last_name, date_of_birth, gender, external_id, shot, birth_year)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+         (organization_id, first_name, last_name, date_of_birth, gender, external_id, shot, birth_year)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        RETURNING *`,
-      [firstName, lastName, dateOfBirth, gender, externalId, shot, birthYear]
+      [orgId, firstName, lastName, dateOfBirth, gender, externalId, shot, birthYear]
     );
     return inserted.rows[0];
   }
@@ -53,8 +62,9 @@ async function findOrCreatePlayer(client, {
          birth_year    = COALESCE($8, birth_year),
          updated_at    = NOW()
      WHERE id = $1
+       AND organization_id = $9
      RETURNING *`,
-    [player.id, firstName, lastName, dateOfBirth, gender, externalId, shot, birthYear]
+    [player.id, firstName, lastName, dateOfBirth, gender, externalId, shot, birthYear, orgId]
   );
   return updated.rows[0];
 }

@@ -41,8 +41,10 @@ router.patch('/move', authMiddleware, requireRole('admin', 'coordinator'), async
     // 1. Verify both sessions exist and belong to the same event & age group
     const sessRes = await client.query(
       `SELECT id, event_id, age_group_id, status, name
-       FROM sessions WHERE id = ANY($1::int[])`,
-      [[fromSessionId, toSessionId]]
+       FROM sessions
+       WHERE id = ANY($1::int[])
+         AND organization_id = $2`,
+      [[fromSessionId, toSessionId], req.org_id]
     );
     if (sessRes.rows.length !== 2) {
       await client.query('ROLLBACK');
@@ -100,7 +102,7 @@ router.patch('/move', authMiddleware, requireRole('admin', 'coordinator'), async
       fromSessionId,
       toSessionId,
       keepCheckinStatus,
-    }, client);
+    }, req.org_id, client);
 
     await client.query('COMMIT');
 

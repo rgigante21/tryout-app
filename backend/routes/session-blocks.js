@@ -31,8 +31,9 @@ router.get('/', ...guard, async (req, res) => {
   if (!event_id) return res.status(400).json({ error: 'event_id required' });
 
   try {
-    const conditions = ['sb.event_id = $1'];
-    const params     = [event_id];
+    // Verify event belongs to org, then list blocks
+    const conditions = ['sb.event_id = $1', 'te.organization_id = $2'];
+    const params     = [event_id, req.org_id];
 
     if (age_group_id) {
       conditions.push(`sb.age_group_id = $${params.length + 1}`);
@@ -48,6 +49,7 @@ router.get('/', ...guard, async (req, res) => {
         COUNT(DISTINCT COALESCE(sp.registration_id, sp.player_id))::int AS player_count
       FROM session_blocks sb
       JOIN age_groups ag ON ag.id = sb.age_group_id
+      JOIN tryout_events te ON te.id = sb.event_id
       LEFT JOIN sessions s ON s.block_id = sb.id
       LEFT JOIN session_players sp ON sp.session_id = s.id
       WHERE ${conditions.join(' AND ')}
@@ -176,6 +178,16 @@ router.post('/', ...guard, async (req, res) => {
   try {
     await client.query('BEGIN');
 
+    // Verify event belongs to this org before creating anything
+    const eventCheck = await client.query(
+      'SELECT id FROM tryout_events WHERE id = $1 AND organization_id = $2',
+      [eventId, req.org_id]
+    );
+    if (!eventCheck.rows[0]) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Event not found' });
+    }
+
     // 1. Create the block
     const blockRes = await client.query(
       `INSERT INTO session_blocks
@@ -196,12 +208,12 @@ router.post('/', ...guard, async (req, res) => {
 
         const sRes = await client.query(
           `INSERT INTO sessions
-             (event_id, age_group_id, block_id, name, session_type,
+             (organization_id, event_id, age_group_id, block_id, name, session_type,
               session_date, start_time, last_name_start, last_name_end,
               jersey_min, jersey_max, status)
-           VALUES ($1,$2,$3,$4,'skills',$5,$6,$7,$8,$9,$10,'pending') RETURNING *`,
+           VALUES ($1,$2,$3,$4,$5,'skills',$6,$7,$8,$9,$10,$11,'pending') RETURNING *`,
           [
-            eventId, ageGroupId, block.id, sessionName, sessionDate,
+            req.org_id, eventId, ageGroupId, block.id, sessionName, sessionDate,
             slot.time || null,
             slot.lastNameStart || null, slot.lastNameEnd || null,
             slot.jerseyMin    || null,  slot.jerseyMax   || null,
@@ -233,10 +245,10 @@ router.post('/', ...guard, async (req, res) => {
           || `Team ${game.homeTeam} vs Team ${game.awayTeam}`;
         const sRes = await client.query(
           `INSERT INTO sessions
-             (event_id, age_group_id, block_id, name, session_type,
+             (organization_id, event_id, age_group_id, block_id, name, session_type,
               session_date, start_time, home_team, away_team, status)
-           VALUES ($1,$2,$3,$4,'game',$5,$6,$7,$8,'pending') RETURNING *`,
-          [eventId, ageGroupId, block.id, sessionName, sessionDate,
+           VALUES ($1,$2,$3,$4,$5,'game',$6,$7,$8,$9,'pending') RETURNING *`,
+          [req.org_id, eventId, ageGroupId, block.id, sessionName, sessionDate,
            game.time || null, game.homeTeam, game.awayTeam]
         );
         createdSessions.push(sRes.rows[0]);

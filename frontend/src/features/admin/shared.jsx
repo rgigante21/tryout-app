@@ -98,10 +98,10 @@ export function Sidebar({ currentNav, user, logout, onNavigate }) {
   return (
     <div style={SB.sidebar}>
       <div style={SB.logoBlock}>
-        <img src="/wyh-logo.jpeg" alt="WYH" style={SB.logoImg} />
+        <img src="/wyh-logo.jpeg" alt="logo" style={SB.logoImg} />
         <div>
-          <div style={SB.logoName}>WYH Admin</div>
-          <div style={SB.logoSub}>Weymouth Youth Hockey</div>
+          <div style={SB.logoName}>{user?.orgName || 'Admin'}</div>
+          <div style={SB.logoSub}>Tryout Admin</div>
         </div>
       </div>
 

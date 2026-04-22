@@ -13,14 +13,20 @@
  */
 
 const request = require('supertest');
-const { buildApp, createUser, cleanup } = require('./helpers');
+const { buildApp, createOrg, createUser, cleanup } = require('./helpers');
 
 const app = buildApp();
-const created = { userIds: [] };
+const created = { userIds: [], orgIds: [] };
+
+let testOrg;
+
+beforeAll(async () => {
+  testOrg = await createOrg();
+  created.orgIds.push(testOrg.id);
+});
 
 afterAll(async () => {
   await cleanup(created);
-  // Close the shared pool imported by helpers so Jest exits cleanly
   const { pool } = require('./helpers');
   await pool.end();
 });
@@ -42,7 +48,7 @@ describe('POST /api/auth/login', () => {
   let user;
 
   beforeAll(async () => {
-    user = await createUser({ role: 'scorer', password: 'ValidPass99!' });
+    user = await createUser({ orgId: testOrg.id, role: 'scorer', password: 'ValidPass99!' });
     created.userIds.push(user.id);
   });
 
@@ -55,7 +61,6 @@ describe('POST /api/auth/login', () => {
     expect(res.body.user).toBeDefined();
     expect(res.body.user.email).toBe(user.email);
 
-    // Cookie should be present
     const setCookie = res.headers['set-cookie'];
     expect(setCookie).toBeDefined();
     const cookieStr = Array.isArray(setCookie) ? setCookie.join('; ') : setCookie;
@@ -70,7 +75,6 @@ describe('POST /api/auth/login', () => {
       .send({ email: user.email, password: 'WrongPassword!' });
     expect(res.status).toBe(401);
     expect(res.body.error).toBeDefined();
-    // Must NOT reveal whether the email exists
     expect(res.body.error).not.toMatch(/user/i);
   });
 
@@ -93,7 +97,6 @@ describe('POST /api/auth/login', () => {
       .post('/api/auth/login')
       .send({ email: user.email, password: 'ValidPass99!' });
     expect(res.status).toBe(200);
-    // Token must not appear at the top level of the response body
     expect(res.body.token).toBeUndefined();
     expect(res.body.access_token).toBeUndefined();
   });
@@ -103,26 +106,22 @@ describe('POST /api/auth/login', () => {
 
 describe('POST /api/auth/logout', () => {
   it('clears the auth_token cookie', async () => {
-    const user = await createUser({ role: 'scorer' });
+    const user = await createUser({ orgId: testOrg.id, role: 'scorer' });
     created.userIds.push(user.id);
 
-    // Login first
     const loginRes = await request(app)
       .post('/api/auth/login')
       .send({ email: user.email, password: user.password });
     const cookie = loginRes.headers['set-cookie'];
 
-    // Logout
     const logoutRes = await request(app)
       .post('/api/auth/logout')
       .set('Cookie', cookie);
 
     expect(logoutRes.status).toBe(200);
-    // Cookie should be cleared (Max-Age=0 or Expires in the past)
     const setCookie = logoutRes.headers['set-cookie'];
     if (setCookie) {
       const cookieStr = Array.isArray(setCookie) ? setCookie.join('; ') : setCookie;
-      // Either Max-Age=0 or expires is in the past
       const clearedByMaxAge  = cookieStr.includes('Max-Age=0');
       const clearedByExpires = /Expires=.*1970/.test(cookieStr) || /Expires=.*Thu, 01 Jan 1970/.test(cookieStr);
       expect(clearedByMaxAge || clearedByExpires).toBe(true);
@@ -151,7 +150,7 @@ describe('GET /api/auth/me', () => {
   });
 
   it('returns user info with a valid cookie', async () => {
-    const user = await createUser({ role: 'scorer' });
+    const user = await createUser({ orgId: testOrg.id, role: 'scorer' });
     created.userIds.push(user.id);
 
     const res = await request(app)
@@ -162,7 +161,7 @@ describe('GET /api/auth/me', () => {
   });
 
   it('sets Cache-Control: no-store', async () => {
-    const user = await createUser({ role: 'scorer' });
+    const user = await createUser({ orgId: testOrg.id, role: 'scorer' });
     created.userIds.push(user.id);
 
     const res = await request(app)
