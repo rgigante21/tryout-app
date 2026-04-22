@@ -5,6 +5,11 @@ const pool = require('./db/pool');
  * Every minute: auto-activate sessions whose start time is ≤ 10 minutes away
  * and are still 'pending'.
  *
+ * Intentional tenant-global bypass: the scheduler is a system process with no
+ * request context. It activates pending sessions across ALL organizations, which
+ * is the correct behavior. The pool connection runs as the postgres superuser
+ * (or tryout_migrations role) which bypasses RLS. This is documented as expected.
+ *
  * Postgres can add a DATE + TIME directly to get a TIMESTAMP, so:
  *   session_date + start_time  →  timestamp without tz
  *   NOW() is compared in the DB's local timezone context

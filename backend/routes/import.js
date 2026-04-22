@@ -148,8 +148,11 @@ function generateTempPassword() {
 // SHARED: validate eventId exists
 // ─────────────────────────────────────────
 
-async function validateEvent(eventId) {
-  const { rows } = await pool.query('SELECT id, name FROM tryout_events WHERE id = $1', [eventId]);
+async function validateEvent(eventId, orgId) {
+  const { rows } = await pool.query(
+    'SELECT id, name FROM tryout_events WHERE id = $1 AND organization_id = $2',
+    [eventId, orgId]
+  );
   return rows[0] || null;
 }
 
@@ -157,7 +160,7 @@ async function validateEvent(eventId) {
 // PLAYER ROW PROCESSOR (preview + validation)
 // ─────────────────────────────────────────
 
-async function processPlayerRows(rows, eventId, ageGroupId) {
+async function processPlayerRows(rows, eventId, ageGroupId, orgId) {
   // Load existing context for duplicate detection
   const [existingJerseyRes, externalIdRes, blocksRes, crossAgeJerseyRes] = await Promise.all([
     pool.query(
@@ -165,7 +168,10 @@ async function processPlayerRows(rows, eventId, ageGroupId) {
        WHERE per.age_group_id = $1 AND per.event_id = $2`,
       [ageGroupId, eventId]
     ),
-    pool.query(`SELECT external_id FROM players WHERE external_id IS NOT NULL`),
+    pool.query(
+      `SELECT external_id FROM players WHERE organization_id = $1 AND external_id IS NOT NULL`,
+      [orgId]
+    ),
     pool.query(
       `SELECT sb.split_method, s.id AS session_id, s.name AS session_name,
               s.start_time, s.last_name_start, s.last_name_end, s.jersey_min, s.jersey_max
@@ -303,7 +309,7 @@ async function processPlayerRows(rows, eventId, ageGroupId) {
 // EVALUATOR ROW PROCESSOR
 // ─────────────────────────────────────────
 
-async function processEvaluatorRows(rows, eventId) {
+async function processEvaluatorRows(rows, eventId, orgId) {
   const processed = [];
 
   for (let i = 0; i < rows.length; i++) {
@@ -333,7 +339,8 @@ async function processEvaluatorRows(rows, eventId) {
 
     if (status !== 'error') {
       const { rows: userRows } = await pool.query(
-        'SELECT id, email, role FROM users WHERE email = $1', [email]
+        'SELECT id, email, role FROM users WHERE email = $1 AND organization_id = $2',
+        [email, orgId]
       );
       existingUser = userRows[0] || null;
       if (existingUser) {
@@ -615,7 +622,7 @@ router.post('/:eventId/import/upload', ...guard, upload.single('file'), async (r
     return res.status(400).json({ error: 'ageGroupId is required for players and session_assignments imports' });
   }
 
-  const event = await validateEvent(eventId);
+  const event = await validateEvent(eventId, req.org_id);
   if (!event) return res.status(404).json({ error: 'Event not found' });
 
   let parseResult;
@@ -633,9 +640,9 @@ router.post('/:eventId/import/upload', ...guard, upload.single('file'), async (r
   let processedRows;
   try {
     if (importType === 'players') {
-      processedRows = await processPlayerRows(rows, eventId, ageGroupId);
+      processedRows = await processPlayerRows(rows, eventId, ageGroupId, req.org_id);
     } else if (importType === 'evaluators') {
-      processedRows = await processEvaluatorRows(rows, eventId);
+      processedRows = await processEvaluatorRows(rows, eventId, req.org_id);
     } else {
       processedRows = await processSessionAssignmentRows(rows, eventId, ageGroupId);
     }
@@ -657,7 +664,7 @@ router.post('/:eventId/import/upload', ...guard, upload.single('file'), async (r
 
     await logAudit('import_uploaded', req.user?.id, {
       batchId, eventId, importType, fileName: req.file.originalname, rowCount: rows.length,
-    });
+    }, req.org_id);
 
     const summary = {
       total:    processedRows.length,
@@ -708,6 +715,9 @@ router.post('/:eventId/import/upload', ...guard, upload.single('file'), async (r
 router.get('/:eventId/import/:batchId/preview', ...guard, async (req, res) => {
   const { eventId, batchId } = req.params;
   try {
+    const event = await validateEvent(eventId, req.org_id);
+    if (!event) return res.status(404).json({ error: 'Event not found' });
+
     const { rows: batch } = await pool.query(
       'SELECT * FROM import_batches WHERE id = $1 AND event_id = $2',
       [batchId, eventId]
@@ -744,6 +754,9 @@ router.get('/:eventId/import/:batchId/preview', ...guard, async (req, res) => {
 
 router.post('/:eventId/import/:batchId/commit', ...guard, async (req, res) => {
   const { eventId, batchId } = req.params;
+
+  const event = await validateEvent(eventId, req.org_id);
+  if (!event) return res.status(404).json({ error: 'Event not found' });
 
   const { rows: batchCheck } = await pool.query(
     'SELECT * FROM import_batches WHERE id = $1 AND event_id = $2',
@@ -784,6 +797,7 @@ router.post('/:eventId/import/:batchId/commit', ...guard, async (req, res) => {
             externalId:  data.externalId,
             shot:        data.shot,
             birthYear:   data.birthYear,
+            orgId:       req.org_id,
           });
 
           const registration = await upsertPlayerRegistration(client, {
@@ -816,10 +830,10 @@ router.post('/:eventId/import/:batchId/commit', ...guard, async (req, res) => {
             const tempPw = generateTempPassword();
             const hashed = await bcrypt.hash(tempPw, 10);
             const { rows: newUser } = await client.query(
-              `INSERT INTO users (email, password, first_name, last_name, role)
-               VALUES ($1, $2, $3, $4, $5)
+              `INSERT INTO users (organization_id, email, password, first_name, last_name, role)
+               VALUES ($1, $2, $3, $4, $5, $6)
                RETURNING id`,
-              [data.email, hashed, data.firstName, data.lastName, data.role]
+              [batch.organization_id, data.email, hashed, data.firstName, data.lastName, data.role]
             );
             userId = newUser[0].id;
             added++;
@@ -831,8 +845,8 @@ router.post('/:eventId/import/:batchId/commit', ...guard, async (req, res) => {
             // Only update role if not downgrading from admin
             if (data.existingRole !== 'admin') {
               await client.query(
-                `UPDATE users SET first_name = $1, last_name = $2, role = $3 WHERE id = $4`,
-                [data.firstName, data.lastName, data.role, userId]
+                `UPDATE users SET first_name = $1, last_name = $2, role = $3 WHERE id = $4 AND organization_id = $5`,
+                [data.firstName, data.lastName, data.role, userId, req.org_id]
               );
             }
             updated++;
@@ -883,7 +897,7 @@ router.post('/:eventId/import/:batchId/commit', ...guard, async (req, res) => {
 
     await logAudit('import_committed', req.user?.id, {
       batchId, eventId, importType: batch.import_type, added, updated, errors,
-    }, client);
+    }, req.org_id, client);
 
     await client.query('COMMIT');
 
@@ -908,6 +922,9 @@ router.post('/:eventId/import/:batchId/commit', ...guard, async (req, res) => {
 router.get('/:eventId/import/history', ...guard, async (req, res) => {
   const { eventId } = req.params;
   try {
+    const event = await validateEvent(eventId, req.org_id);
+    if (!event) return res.status(404).json({ error: 'Event not found' });
+
     const { rows } = await pool.query(
       `SELECT ib.id, ib.import_type, ib.status, ib.file_name,
               ib.row_count, ib.added_count, ib.updated_count, ib.error_count,
@@ -935,6 +952,9 @@ router.get('/:eventId/import/history', ...guard, async (req, res) => {
 router.get('/:eventId/import/:batchId/errors.csv', ...guard, async (req, res) => {
   const { eventId, batchId } = req.params;
   try {
+    const event = await validateEvent(eventId, req.org_id);
+    if (!event) return res.status(404).json({ error: 'Event not found' });
+
     const { rows: batchCheck } = await pool.query(
       'SELECT id, import_type, file_name FROM import_batches WHERE id = $1 AND event_id = $2',
       [batchId, eventId]

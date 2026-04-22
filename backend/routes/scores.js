@@ -18,10 +18,10 @@ router.post('/', authMiddleware, async (req, res) => {
   const isAdmin = req.user.role === 'admin' || req.user.role === 'coordinator';
 
   try {
-    // 1. Verify the session exists and is not finalized
+    // 1. Verify the session exists, belongs to this org, and is not finalized
     const sessionRes = await pool.query(
-      'SELECT id, status FROM sessions WHERE id = $1',
-      [sessionId]
+      'SELECT id, status FROM sessions WHERE id = $1 AND organization_id = $2',
+      [sessionId, req.org_id]
     );
     if (!sessionRes.rows[0]) {
       return res.status(404).json({ error: 'Session not found' });
@@ -88,7 +88,7 @@ router.post('/', authMiddleware, async (req, res) => {
       sessionId,
       playerId,
       scoreId: result.rows[0].id,
-    });
+    }, req.org_id);
 
     res.json({ score: result.rows[0] });
   } catch (err) {
@@ -127,9 +127,10 @@ router.get('/rankings/:ageGroupId/:eventId',
          AND (sc.registration_id = per.id OR (sc.registration_id IS NULL AND sc.player_id = p.id))
         WHERE per.age_group_id = $1
           AND per.event_id = $2
+          AND p.organization_id = $3
         GROUP BY per.id, p.id, p.first_name, p.last_name, per.jersey_number
         ORDER BY avg_overall DESC NULLS LAST, per.jersey_number
-      `, [ageGroupId, eventId]);
+      `, [ageGroupId, eventId, req.org_id]);
 
       res.json({ rankings: result.rows });
     } catch (err) {
@@ -145,9 +146,9 @@ router.get('/dashboard',
   async (req, res) => {
     try {
       const { eventId } = req.query;
-      const params = [];
+      const params = [req.org_id];
       const eventFilter = eventId ? (params.push(eventId), `AND s.event_id = $${params.length}`) : '';
-      const playerEventFilter = eventId ? `AND p.event_id = $1` : '';
+      const playerEventFilter = eventId ? `AND per.event_id = $2` : '';
       const result = await pool.query(`
         SELECT
           ag.name       AS age_group,
@@ -160,9 +161,10 @@ router.get('/dashboard',
           COUNT(DISTINCT ss.user_id) AS total_scorers
         FROM age_groups ag
         LEFT JOIN sessions s ON s.age_group_id = ag.id ${eventFilter}
-        LEFT JOIN player_event_registrations per ON per.age_group_id = ag.id ${playerEventFilter.replace('p.', 'per.')}
+        LEFT JOIN player_event_registrations per ON per.age_group_id = ag.id ${playerEventFilter}
         LEFT JOIN scores sc ON sc.session_id = s.id
         LEFT JOIN session_scorers ss ON ss.session_id = s.id
+        WHERE ag.organization_id = $1
         GROUP BY ag.id, ag.name, ag.code, ag.sort_order
         ORDER BY ag.sort_order
       `, params);
