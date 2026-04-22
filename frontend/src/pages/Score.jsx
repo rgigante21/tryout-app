@@ -100,6 +100,7 @@ export default function Score() {
   };
 
   const openPlayer = (p) => {
+    if (!p.checked_in) return;
     if (session?.status === 'finalized') return;
     setPlayer(p);
     const prev      = saved[p.id]  || {};
@@ -144,10 +145,10 @@ export default function Score() {
   };
 
   const btnState = (p) => {
+    if (!p.checked_in) return 'not_present';
     if (saved[p.id]?.complete) return 'complete';
     const d = drafts[p.id];
     if (d && CRITERIA.some(c => d[c.key] != null)) return 'partial';
-    if (!p.checked_in) return 'not_present';
     return 'default';
   };
 
