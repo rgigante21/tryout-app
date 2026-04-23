@@ -299,7 +299,21 @@ export const A = {
   },
   topbarLeft: { display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, flexWrap: 'wrap' },
   topbarRight: { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' },
+  topbarEventStack: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 4,
+    minWidth: 0,
+  },
   pageTitle: { fontFamily: "'Barlow Condensed', sans-serif", fontSize: 24, fontWeight: 700, color: '#FFFFFF', letterSpacing: '0.03em' },
+  topbarEventMeta: {
+    display: 'flex',
+    gap: 8,
+    flexWrap: 'wrap',
+    fontSize: 12,
+    fontWeight: 700,
+    color: 'rgba(255,255,255,0.76)',
+  },
   backLink: { background: 'none', border: 'none', color: 'rgba(255,255,255,0.82)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', padding: 0 },
   toolbarSelect: {
     minWidth: 240,

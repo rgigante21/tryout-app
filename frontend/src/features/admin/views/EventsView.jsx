@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { A } from '../styles';
 import { fmt, STATUS_META, BlockWizardPanel } from '../shared';
@@ -35,88 +35,6 @@ function buildCalendarCells(year, month) {
     cells[firstDay + d - 1] = d;
   }
   return cells;
-}
-
-function ArchiveDropdown({ archivedEvents, onSelect }) {
-  const [open, setOpen] = useState(false);
-  const btnRef = useRef(null);
-  const [panelPos, setPanelPos] = useState({ top: 0, right: 28 });
-
-  useEffect(() => {
-    if (!open) return;
-    const close = (e) => {
-      if (!btnRef.current?.contains(e.target)) setOpen(false);
-    };
-    document.addEventListener('mousedown', close);
-    return () => document.removeEventListener('mousedown', close);
-  }, [open]);
-
-  const handleToggle = () => {
-    if (!open && btnRef.current) {
-      const rect = btnRef.current.getBoundingClientRect();
-      setPanelPos({ top: rect.bottom + 8, right: window.innerWidth - rect.right });
-    }
-    setOpen((v) => !v);
-  };
-
-  if (!archivedEvents.length) return null;
-
-  return (
-    <div ref={btnRef} style={{ position: 'relative' }}>
-      <button
-        onClick={handleToggle}
-        style={{ ...A.ghostBtn, gap: 6 }}
-        aria-expanded={open}
-      >
-        Archived Tryouts
-        <span style={{ fontSize: 10, opacity: 0.7 }}>{open ? '▲' : '▼'}</span>
-      </button>
-
-      {open && (
-        <>
-          <div
-            style={A.archivePanelOverlay}
-            onClick={() => setOpen(false)}
-          />
-          <div
-            style={{
-              ...A.archivePanel,
-              top: panelPos.top,
-              right: panelPos.right,
-            }}
-          >
-            <div style={A.archivePanelHead}>
-              <div style={A.archivePanelTitle}>Past Tryouts</div>
-              <div style={A.archivePanelHint}>Open an archived tryout in read-only mode.</div>
-            </div>
-            <div style={A.archivePanelList}>
-              {archivedEvents.map((event) => (
-                <button
-                  key={event.id}
-                  className="archive-panel-item"
-                  type="button"
-                  onClick={() => {
-                    onSelect(event.id);
-                    setOpen(false);
-                  }}
-                >
-                  <span>
-                    <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)', marginBottom: 2 }}>
-                      {event.name}
-                    </div>
-                    <div style={{ fontSize: 11, color: 'var(--text3)' }}>
-                      {event.season} · Archived {fmt.date(event.archived_at)}
-                    </div>
-                  </span>
-                  <span style={{ color: 'var(--text3)', fontSize: 14, flexShrink: 0 }}>↗</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        </>
-      )}
-    </div>
-  );
 }
 
 function EventCalendar({
@@ -710,7 +628,6 @@ function RostersTab({ viewedEvent, ageGroups }) {
 export default function EventsView({
   currentEvents = [],
   archivedEvents = [],
-  activeEvent,
   viewedEvent,
   isArchivedView,
   newEvent,
@@ -718,11 +635,9 @@ export default function EventsView({
   showCreateEvent,
   createEvent,
   creatingEvent,
+  editingEventId,
   archiveEvent,
   eventMsg,
-  selectCurrentEvent,
-  selectArchivedEvent,
-  returnToCurrentEvent,
   restoreEvent,
   allSessions = [],
   sessLoading,
@@ -785,10 +700,16 @@ export default function EventsView({
 
       {showCreateEvent && (
         <div style={A.eventsCreateCard}>
-          <div style={A.eventsPanelEyebrow}>Build a New Tryout Window</div>
-          <div style={A.eventsCreateTitle}>New Tryout</div>
+          <div style={A.eventsPanelEyebrow}>
+            {editingEventId ? 'Update Tryout Details' : 'Build a New Tryout Window'}
+          </div>
+          <div style={A.eventsCreateTitle}>
+            {editingEventId ? 'Edit Tryout' : 'New Tryout'}
+          </div>
           <div style={A.eventsCreateCopy}>
-            Set the season frame first. The planner will use these dates to anchor the calendar immediately.
+            {editingEventId
+              ? 'Fix the tryout name, season, or date range here. Changes update the sticky banner and planning views immediately.'
+              : 'Set the season frame first. The planner will use these dates to anchor the calendar immediately.'}
           </div>
           <div style={A.formRow}>
             <div style={{ flex: 2 }}>
@@ -824,7 +745,7 @@ export default function EventsView({
               disabled={creatingEvent || !newEvent.name || !newEvent.season || !newEvent.startDate || !newEvent.endDate}
               style={A.saveBtn}
             >
-              {creatingEvent ? 'Creating…' : 'Create Tryout'}
+              {creatingEvent ? (editingEventId ? 'Saving…' : 'Creating…') : (editingEventId ? 'Save Changes' : 'Create Tryout')}
             </button>
           </div>
         </div>
@@ -832,60 +753,6 @@ export default function EventsView({
 
       {viewedEvent && (
         <>
-          {/* ── Hero ── */}
-          <section style={A.eventsHero}>
-            <div style={A.eventsHeroBackdrop} />
-            <div style={A.eventsHeroMain}>
-              <div style={A.eventsHeroHeaderRow}>
-                <div>
-                  <div style={A.eventsHeroEyebrow}>
-                    {isArchivedView ? 'Archived Tryout Review' : 'Current Tryout Window'}
-                  </div>
-                  <h3 style={A.eventsHeroTitle}>{viewedEvent.name}</h3>
-                  <div style={A.eventsHeroMeta}>
-                    <span>{viewedEvent.season}</span>
-                    <span>·</span>
-                    <span>{fmt.date(viewedEvent.start_date)} to {fmt.date(viewedEvent.end_date)}</span>
-                    {isArchivedView && viewedEvent.archived_at && (
-                      <>
-                        <span>·</span>
-                        <span>Archived {fmt.date(viewedEvent.archived_at)}</span>
-                      </>
-                    )}
-                  </div>
-                </div>
-
-                <div style={A.eventsHeroControls}>
-                  {currentEvents.length > 1 && (
-                    <label style={A.eventsControlGroup}>
-                      <span style={A.eventsControlLabel}>Current tryout</span>
-                      <select
-                        value={activeEvent ? String(activeEvent.id) : ''}
-                        onChange={(e) => selectCurrentEvent(e.target.value)}
-                        style={{ ...A.toolbarSelect, minWidth: 220 }}
-                      >
-                        {currentEvents.map((ev) => (
-                          <option key={ev.id} value={ev.id}>{ev.name} ({ev.season})</option>
-                        ))}
-                      </select>
-                    </label>
-                  )}
-
-                  <ArchiveDropdown
-                    archivedEvents={archivedEvents}
-                    onSelect={selectArchivedEvent}
-                  />
-
-                  {isArchivedView && activeEvent && (
-                    <button onClick={returnToCurrentEvent} style={A.ghostBtn}>
-                      Return to Current
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          </section>
-
           {isArchivedView && (
             <div style={A.eventsReadOnlyBanner}>
               You are reviewing an archived tryout. Calendar and day plans are visible, but editing is disabled until the tryout is restored.

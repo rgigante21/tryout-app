@@ -46,6 +46,20 @@ function getAdminRoute(pathname) {
   return { view: 'overview' };
 }
 
+const EMPTY_EVENT_FORM = { name: '', season: '', startDate: '', endDate: '' };
+
+function formatEventDateRange(startDate, endDate) {
+  if (!startDate || !endDate) return '';
+
+  const start = new Date(`${String(startDate).slice(0, 10)}T12:00:00`);
+  const end = new Date(`${String(endDate).slice(0, 10)}T12:00:00`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return '';
+
+  const startLabel = start.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const endLabel = end.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return `${startLabel} to ${endLabel}`;
+}
+
 export default function Admin() {
   const { user, logout, handleAuthError } = useAuth();
   const navigate = useNavigate();
@@ -119,9 +133,10 @@ export default function Admin() {
 
   const [orgAccentColor, setOrgAccentColor] = useState('#6B1E2E');
 
-  const [newEvent, setNewEvent] = useState({ name: '', season: '', startDate: '', endDate: '' });
+  const [newEvent, setNewEvent] = useState(EMPTY_EVENT_FORM);
   const [creatingEvent, setCreatingEvent] = useState(false);
   const [showCreateEvent, setShowCreateEvent] = useState(false);
+  const [editingEventId, setEditingEventId] = useState(null);
   const [eventMsg, setEventMsg] = useState({ type: '', text: '' });
   const [selectedEventId, setSelectedEventId] = useState('');
   const [viewedEventId, setViewedEventId] = useState('');
@@ -136,6 +151,7 @@ export default function Admin() {
   const viewedEvent = events.find((e) => String(e.id) === String(viewedEventId))
     || null;
   const isArchivedEventView = Boolean(viewedEvent?.archived);
+  const topbarEvent = route.view === 'events' ? viewedEvent || activeEvent : null;
   const activeGroup = ageGroups.find((group) => group.code.toLowerCase() === (route.groupCode || '').toLowerCase()) || null;
 
   useEffect(() => {
@@ -310,6 +326,8 @@ export default function Admin() {
   const goTo = useCallback((path) => {
     setShowBlockWizard(false);
     setShowCreateEvent(false);
+    setEditingEventId(null);
+    setNewEvent(EMPTY_EVENT_FORM);
     navigate(path);
   }, [navigate]);
 
@@ -624,18 +642,52 @@ export default function Admin() {
     }
   };
 
-  const createEvent = async () => {
+  const openCreateEvent = useCallback(() => {
+    setEditingEventId(null);
+    setNewEvent(EMPTY_EVENT_FORM);
+    setShowCreateEvent((isOpen) => !isOpen || editingEventId !== null);
+    setEventMsg({ type: '', text: '' });
+  }, [editingEventId]);
+
+  const openEditEvent = useCallback((event) => {
+    if (!event) return;
+    setEditingEventId(event.id);
+    setNewEvent({
+      name: event.name || '',
+      season: event.season || '',
+      startDate: event.start_date ? String(event.start_date).slice(0, 10) : '',
+      endDate: event.end_date ? String(event.end_date).slice(0, 10) : '',
+    });
+    setShowCreateEvent(true);
+    setEventMsg({ type: '', text: '' });
+  }, []);
+
+  const cancelEventComposer = useCallback(() => {
+    setShowCreateEvent(false);
+    setEditingEventId(null);
+    setNewEvent(EMPTY_EVENT_FORM);
+  }, []);
+
+  const saveEvent = async () => {
     const { name, season, startDate, endDate } = newEvent;
     if (!name || !season || !startDate || !endDate) return;
     setCreatingEvent(true);
     setEventMsg({ type: '', text: '' });
     try {
-      const r = await api.createEvent({ name, season, startDate, endDate });
+      const r = editingEventId
+        ? await api.updateEvent(editingEventId, { name, season, startDate, endDate })
+        : await api.createEvent({ name, season, startDate, endDate });
       const ev = await api.events();
       setEvents(ev.events);
-      setNewEvent({ name: '', season: '', startDate: '', endDate: '' });
+      setNewEvent(EMPTY_EVENT_FORM);
+      setEditingEventId(null);
       setShowCreateEvent(false);
-      setEventMsg({ type: 'success', text: `"${r.event.name}" tryout created.` });
+      setSelectedEventId(String(r.event.id));
+      setViewedEventId(String(r.event.id));
+      setEventMsg({
+        type: 'success',
+        text: editingEventId ? `"${r.event.name}" updated.` : `"${r.event.name}" tryout created.`,
+      });
     } catch (err) {
       setEventMsg({ type: 'error', text: err.message });
     } finally {
@@ -788,10 +840,27 @@ export default function Admin() {
             {backTarget && (
               <button onClick={() => goTo(backTarget.to)} style={A.backLink}>{backTarget.label}</button>
             )}
-            <h2 style={A.pageTitle}>{pageTitle}</h2>
+            {route.view === 'events' && topbarEvent ? (
+              <div style={A.topbarEventStack}>
+                <h2 style={A.pageTitle}>{topbarEvent.name}</h2>
+                <div style={A.topbarEventMeta}>
+                  <span>{topbarEvent.season}</span>
+                  <span>·</span>
+                  <span>{formatEventDateRange(topbarEvent.start_date, topbarEvent.end_date)}</span>
+                  {isArchivedEventView && (
+                    <>
+                      <span>·</span>
+                      <span>Archived</span>
+                    </>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <h2 style={A.pageTitle}>{pageTitle}</h2>
+            )}
           </div>
           <div style={A.topbarRight}>
-            {(availableEvents.length > 1 || (route.view === 'events' && availableEvents.length > 0)) && (
+            {route.view !== 'events' && availableEvents.length > 1 && (
               <select
                 value={activeEvent ? String(activeEvent.id) : ''}
                 onChange={(e) => setSelectedEventId(e.target.value)}
@@ -799,6 +868,25 @@ export default function Admin() {
                 aria-label="Selected tryout"
               >
                 {availableEvents.map((event) => (
+                  <option key={event.id} value={event.id}>
+                    {event.name} ({event.season})
+                  </option>
+                ))}
+              </select>
+            )}
+            {route.view === 'events' && archivedEvents.length > 0 && (
+              <select
+                value={isArchivedEventView ? String(viewedEvent?.id || '') : ''}
+                onChange={(e) => {
+                  if (!e.target.value) return;
+                  setViewedEventId(String(e.target.value));
+                  setShowBlockWizard(false);
+                }}
+                style={A.toolbarSelect}
+                aria-label="Archived tryouts"
+              >
+                <option value="">Archived Tryouts</option>
+                {archivedEvents.map((event) => (
                   <option key={event.id} value={event.id}>
                     {event.name} ({event.season})
                   </option>
@@ -816,9 +904,36 @@ export default function Admin() {
               </button>
             )}
             {route.view === 'events' && (
-              <button onClick={() => { setShowBlockWizard(false); setShowCreateEvent((v) => !v); }} style={showCreateEvent ? A.ghostBtn : A.primaryBtn}>
-                {showCreateEvent ? 'Cancel' : '+ New Tryout'}
-              </button>
+              <>
+                {isArchivedEventView && activeEvent && (
+                  <button onClick={() => setViewedEventId(String(activeEvent.id))} style={A.ghostBtn}>
+                    Return to Current
+                  </button>
+                )}
+                {viewedEvent && (
+                  <button
+                    onClick={() => {
+                      if (showCreateEvent && editingEventId === viewedEvent.id) {
+                        cancelEventComposer();
+                        return;
+                      }
+                      openEditEvent(viewedEvent);
+                    }}
+                    style={A.ghostBtn}
+                  >
+                    {showCreateEvent && editingEventId === viewedEvent?.id ? 'Close Editor' : 'Edit Tryout'}
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    setShowBlockWizard(false);
+                    openCreateEvent();
+                  }}
+                  style={showCreateEvent && editingEventId === null ? A.ghostBtn : A.primaryBtn}
+                >
+                  {showCreateEvent && editingEventId === null ? 'Cancel' : '+ New Tryout'}
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -934,23 +1049,11 @@ export default function Admin() {
               newEvent={newEvent}
               setNewEvent={setNewEvent}
               showCreateEvent={showCreateEvent}
-              createEvent={createEvent}
+              createEvent={saveEvent}
               creatingEvent={creatingEvent}
+              editingEventId={editingEventId}
               archiveEvent={archiveEvent}
               eventMsg={eventMsg}
-              selectCurrentEvent={(eventId) => {
-                setSelectedEventId(String(eventId));
-                setViewedEventId(String(eventId));
-                setShowBlockWizard(false);
-              }}
-              selectArchivedEvent={(eventId) => {
-                setViewedEventId(String(eventId));
-                setShowBlockWizard(false);
-              }}
-              returnToCurrentEvent={() => {
-                if (!activeEvent) return;
-                setViewedEventId(String(activeEvent.id));
-              }}
               restoreEvent={restoreEvent}
               allSessions={allSessions}
               sessLoading={sessLoading}

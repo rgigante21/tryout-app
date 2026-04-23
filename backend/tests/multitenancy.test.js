@@ -72,6 +72,19 @@ describe('Cross-tenant: events', () => {
     assertNoLeak(res);
   });
 
+  it('PATCH /api/admin/events/:id on org B event returns 404', async () => {
+    const res = await request(app)
+      .patch(`/api/admin/events/${fixtureB.event.id}`)
+      .set('Cookie', adminA.cookie)
+      .send({
+        name: 'Updated Tryout',
+        season: '2026-2027',
+        startDate: '2026-04-01',
+        endDate: '2026-04-10',
+      });
+    assertNoLeak(res);
+  });
+
   it('GET /api/admin/events/:id/stats on org B event returns 404', async () => {
     const res = await request(app)
       .get(`/api/admin/events/${fixtureB.event.id}/stats`)
