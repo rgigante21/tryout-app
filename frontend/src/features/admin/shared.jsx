@@ -33,14 +33,14 @@ export const STATUS_META = {
 };
 
 export const NAV_ITEMS = [
-  { id: 'overview', label: 'Today', icon: '◆', section: 'overview', path: '/admin/overview' },
-  { id: 'events', label: 'Tryout Setup', icon: '◷', section: 'tryouts', path: '/admin/events' },
-  { id: 'sessions', label: 'Sessions', icon: '≡', section: 'tryouts', path: '/admin/sessions' },
-  { id: 'groups', label: 'Age Groups', icon: '▤', section: 'tryouts', path: '/admin/groups' },
-  { id: 'checkin', label: 'Check-In', icon: '✓', section: 'tryouts', path: '/admin/checkin' },
-  { id: 'results', label: 'Results', icon: '★', section: 'tryouts', path: '/admin/results' },
-  { id: 'importExport', label: 'Import / Export', icon: '⇅', section: 'tryouts', path: '/admin/import-export' },
-  { id: 'coaches', label: 'Coaches', icon: '◯', section: 'people', path: '/admin/coaches' },
+  { id: 'overview',     label: 'Today',          icon: '◆', section: 'overview', path: '/admin/overview' },
+  { id: 'events',       label: 'Tryout Setup',   icon: '◷', section: 'tryouts', path: '/admin/events',       roles: ['admin'] },
+  { id: 'sessions',     label: 'Sessions',        icon: '≡', section: 'tryouts', path: '/admin/sessions' },
+  { id: 'groups',       label: 'Age Groups',      icon: '▤', section: 'tryouts', path: '/admin/groups',        roles: ['admin'] },
+  { id: 'checkin',      label: 'Check-In',        icon: '✓', section: 'tryouts', path: '/admin/checkin' },
+  { id: 'results',      label: 'Results',         icon: '★', section: 'tryouts', path: '/admin/results' },
+  { id: 'importExport', label: 'Import / Export', icon: '⇅', section: 'tryouts', path: '/admin/import-export', roles: ['admin'] },
+  { id: 'coaches',      label: 'Coaches',         icon: '◯', section: 'people',  path: '/admin/coaches',       roles: ['admin'] },
 ];
 
 export function defaultBlock() {
@@ -106,7 +106,7 @@ export function Sidebar({ currentNav, user, logout, onNavigate }) {
       </div>
 
       {['overview', 'tryouts', 'people'].map((section) => {
-        const items = NAV_ITEMS.filter((n) => n.section === section);
+        const items = NAV_ITEMS.filter((n) => n.section === section && (!n.roles || n.roles.includes(user?.role)));
         return (
           <div key={section}>
             {section !== 'overview' && (

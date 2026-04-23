@@ -6,8 +6,9 @@ const { assignPlayerToSessions } = require('../utils/session-assignment');
 const { logAudit } = require('../utils/audit');
 const { findOrCreatePlayer, upsertPlayerRegistration } = require('../utils/registrations');
 
-const router = express.Router();
-const guard  = [authMiddleware, requireRole('admin', 'coordinator')];
+const router     = express.Router();
+const guard      = [authMiddleware, requireRole('admin', 'coordinator')];
+const adminGuard = [authMiddleware, requireRole('admin')];
 
 // ── Age Groups ────────────────────────────────────────────────────────────────
 
@@ -23,7 +24,7 @@ router.get('/age-groups', ...guard, async (req, res) => {
   }
 });
 
-router.post('/age-groups', ...guard, async (req, res) => {
+router.post('/age-groups', ...adminGuard, async (req, res) => {
   const { name, code, sortOrder } = req.body;
   if (!name || !code) {
     return res.status(400).json({ error: 'name and code required' });
@@ -54,7 +55,7 @@ router.get('/events', ...guard, async (req, res) => {
   }
 });
 
-router.post('/events', ...guard, async (req, res) => {
+router.post('/events', ...adminGuard, async (req, res) => {
   const { name, season, startDate, endDate } = req.body;
   if (!name || !season || !startDate || !endDate) {
     return res.status(400).json({ error: 'name, season, startDate, endDate required' });
@@ -71,7 +72,7 @@ router.post('/events', ...guard, async (req, res) => {
   }
 });
 
-router.patch('/events/:id/archive', ...guard, async (req, res) => {
+router.patch('/events/:id/archive', ...adminGuard, async (req, res) => {
   const { archive } = req.body;
   try {
     const r = await pool.query(
@@ -200,7 +201,7 @@ router.get('/players', ...guard, async (req, res) => {
   }
 });
 
-router.post('/players', ...guard, async (req, res) => {
+router.post('/players', ...adminGuard, async (req, res) => {
   const { firstName, lastName, jerseyNumber, ageGroupId, eventId } = req.body;
   if (!firstName || !lastName || !jerseyNumber || !ageGroupId || !eventId) {
     return res.status(400).json({ error: 'All fields required' });
@@ -258,7 +259,7 @@ router.post('/players', ...guard, async (req, res) => {
   }
 });
 
-router.delete('/players/:id', ...guard, async (req, res) => {
+router.delete('/players/:id', ...adminGuard, async (req, res) => {
   try {
     const client = await pool.connect();
     try {
@@ -300,7 +301,7 @@ router.delete('/players/:id', ...guard, async (req, res) => {
   }
 });
 
-router.post('/players/bulk', ...guard, async (req, res) => {
+router.post('/players/bulk', ...adminGuard, async (req, res) => {
   const { players, ageGroupId, eventId } = req.body;
   if (!Array.isArray(players) || !ageGroupId || !eventId) {
     return res.status(400).json({ error: 'players, ageGroupId, eventId required' });
@@ -431,7 +432,7 @@ router.post('/users', authMiddleware, requireRole('admin'), async (req, res) => 
   }
 });
 
-router.patch('/users/:id', ...guard, async (req, res) => {
+router.patch('/users/:id', ...adminGuard, async (req, res) => {
   const { firstName, lastName, email, role, password } = req.body || {};
   try {
     const fields = [], vals = [];
