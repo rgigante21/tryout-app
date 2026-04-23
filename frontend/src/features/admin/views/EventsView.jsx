@@ -256,10 +256,40 @@ function DayPanel({
   );
 }
 
-function OverviewTab({ viewedEvent, isArchivedView, orgAccentColor, onUpdateOrgColor, archiveEvent, restoreEvent }) {
+function OverviewTab({ viewedEvent, isArchivedView, orgAccentColor, onUpdateOrgColor, onUpdateEvent, archiveEvent, restoreEvent }) {
   const [customColor, setCustomColor] = useState(orgAccentColor || '#6B1E2E');
   const [savingColor, setSavingColor] = useState(false);
   const [colorMsg, setColorMsg] = useState('');
+
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState({});
+  const [saving, setSaving] = useState(false);
+  const [editMsg, setEditMsg] = useState('');
+
+  const startEdit = () => {
+    setDraft({
+      name: viewedEvent.name,
+      season: viewedEvent.season,
+      startDate: String(viewedEvent.start_date).slice(0, 10),
+      endDate: String(viewedEvent.end_date).slice(0, 10),
+    });
+    setEditMsg('');
+    setEditing(true);
+  };
+
+  const saveEdit = async () => {
+    if (!draft.name || !draft.season || !draft.startDate || !draft.endDate) return;
+    setSaving(true);
+    setEditMsg('');
+    try {
+      await onUpdateEvent(viewedEvent.id, draft);
+      setEditing(false);
+    } catch (err) {
+      setEditMsg(err.message || 'Failed to save.');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const handleSwatch = async (color) => {
     setSavingColor(true);
@@ -288,26 +318,69 @@ function OverviewTab({ viewedEvent, isArchivedView, orgAccentColor, onUpdateOrgC
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {/* Event details card */}
       <div style={A.setupCard}>
-        <div style={A.setupSectionHead}>Event Details</div>
-        <div style={A.setupSectionSub}>Core metadata for this tryout window.</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
           <div>
-            <div style={{ ...A.eventMiniLabel, marginBottom: 4 }}>Name</div>
-            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>{viewedEvent.name}</div>
+            <div style={A.setupSectionHead}>Event Details</div>
+            <div style={A.setupSectionSub}>Core metadata for this tryout window.</div>
           </div>
-          <div>
-            <div style={{ ...A.eventMiniLabel, marginBottom: 4 }}>Season</div>
-            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>{viewedEvent.season}</div>
-          </div>
-          <div>
-            <div style={{ ...A.eventMiniLabel, marginBottom: 4 }}>Start Date</div>
-            <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)' }}>{fmt.date(viewedEvent.start_date)}</div>
-          </div>
-          <div>
-            <div style={{ ...A.eventMiniLabel, marginBottom: 4 }}>End Date</div>
-            <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)' }}>{fmt.date(viewedEvent.end_date)}</div>
-          </div>
+          {!isArchivedView && !editing && (
+            <button onClick={startEdit} style={{ ...A.ghostBtn, fontSize: 13, minHeight: 32 }}>Edit</button>
+          )}
         </div>
+        {editing ? (
+          <div>
+            <div style={A.formRow}>
+              <div style={{ flex: 2 }}>
+                <label style={A.fieldLabel}>Tryout name</label>
+                <input value={draft.name} onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={A.fieldLabel}>Season</label>
+                <input value={draft.season} onChange={(e) => setDraft((d) => ({ ...d, season: e.target.value }))} />
+              </div>
+            </div>
+            <div style={{ ...A.formRow, marginTop: 10 }}>
+              <div style={{ flex: 1 }}>
+                <label style={A.fieldLabel}>Start date</label>
+                <input type="date" value={draft.startDate} onChange={(e) => setDraft((d) => ({ ...d, startDate: e.target.value }))} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={A.fieldLabel}>End date</label>
+                <input type="date" value={draft.endDate} onChange={(e) => setDraft((d) => ({ ...d, endDate: e.target.value }))} />
+              </div>
+            </div>
+            {editMsg && <div style={{ marginTop: 8, fontSize: 12, color: 'var(--red-txt)', fontWeight: 600 }}>{editMsg}</div>}
+            <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+              <button
+                onClick={saveEdit}
+                disabled={saving || !draft.name || !draft.season || !draft.startDate || !draft.endDate}
+                style={A.saveBtn}
+              >
+                {saving ? 'Saving…' : 'Save Changes'}
+              </button>
+              <button onClick={() => setEditing(false)} style={A.ghostBtn}>Cancel</button>
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div>
+              <div style={{ ...A.eventMiniLabel, marginBottom: 4 }}>Name</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>{viewedEvent.name}</div>
+            </div>
+            <div>
+              <div style={{ ...A.eventMiniLabel, marginBottom: 4 }}>Season</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>{viewedEvent.season}</div>
+            </div>
+            <div>
+              <div style={{ ...A.eventMiniLabel, marginBottom: 4 }}>Start Date</div>
+              <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)' }}>{fmt.date(viewedEvent.start_date)}</div>
+            </div>
+            <div>
+              <div style={{ ...A.eventMiniLabel, marginBottom: 4 }}>End Date</div>
+              <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)' }}>{fmt.date(viewedEvent.end_date)}</div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Color palette card */}
@@ -635,7 +708,6 @@ export default function EventsView({
   showCreateEvent,
   createEvent,
   creatingEvent,
-  editingEventId,
   archiveEvent,
   eventMsg,
   restoreEvent,
@@ -660,6 +732,7 @@ export default function EventsView({
   updateStatus,
   orgAccentColor,
   onUpdateOrgColor,
+  onUpdateEvent,
 }) {
   const now = new Date();
   const [calYear, setCalYear] = useState(now.getFullYear());
@@ -700,16 +773,10 @@ export default function EventsView({
 
       {showCreateEvent && (
         <div style={A.eventsCreateCard}>
-          <div style={A.eventsPanelEyebrow}>
-            {editingEventId ? 'Update Tryout Details' : 'Build a New Tryout Window'}
-          </div>
-          <div style={A.eventsCreateTitle}>
-            {editingEventId ? 'Edit Tryout' : 'New Tryout'}
-          </div>
+          <div style={A.eventsPanelEyebrow}>Build a New Tryout Window</div>
+          <div style={A.eventsCreateTitle}>New Tryout</div>
           <div style={A.eventsCreateCopy}>
-            {editingEventId
-              ? 'Fix the tryout name, season, or date range here. Changes update the sticky banner and planning views immediately.'
-              : 'Set the season frame first. The planner will use these dates to anchor the calendar immediately.'}
+            Set the season frame first. The planner will use these dates to anchor the calendar immediately.
           </div>
           <div style={A.formRow}>
             <div style={{ flex: 2 }}>
@@ -745,7 +812,7 @@ export default function EventsView({
               disabled={creatingEvent || !newEvent.name || !newEvent.season || !newEvent.startDate || !newEvent.endDate}
               style={A.saveBtn}
             >
-              {creatingEvent ? (editingEventId ? 'Saving…' : 'Creating…') : (editingEventId ? 'Save Changes' : 'Create Tryout')}
+              {creatingEvent ? 'Creating…' : 'Create Tryout'}
             </button>
           </div>
         </div>
@@ -863,6 +930,7 @@ export default function EventsView({
               isArchivedView={isArchivedView}
               orgAccentColor={orgAccentColor}
               onUpdateOrgColor={onUpdateOrgColor}
+              onUpdateEvent={onUpdateEvent}
               archiveEvent={archiveEvent}
               restoreEvent={restoreEvent}
             />

@@ -65,6 +65,71 @@ export function defaultBlock() {
   };
 }
 
+export function ArchiveDropdown({ archivedEvents, onSelect }) {
+  const [open, setOpen] = useState(false);
+  const btnRef = useRef(null);
+  const [panelPos, setPanelPos] = useState({ top: 0, right: 28 });
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (e) => {
+      if (!btnRef.current?.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [open]);
+
+  const handleToggle = () => {
+    if (!open && btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect();
+      setPanelPos({ top: rect.bottom + 8, right: window.innerWidth - rect.right });
+    }
+    setOpen((v) => !v);
+  };
+
+  if (!archivedEvents.length) return null;
+
+  return (
+    <div ref={btnRef} style={{ position: 'relative' }}>
+      <button onClick={handleToggle} style={{ ...A.ghostBtn, gap: 6 }} aria-expanded={open}>
+        Archived Tryouts
+        <span style={{ fontSize: 10, opacity: 0.7 }}>{open ? '▲' : '▼'}</span>
+      </button>
+      {open && (
+        <>
+          <div style={A.archivePanelOverlay} onClick={() => setOpen(false)} />
+          <div style={{ ...A.archivePanel, top: panelPos.top, right: panelPos.right }}>
+            <div style={A.archivePanelHead}>
+              <div style={A.archivePanelTitle}>Past Tryouts</div>
+              <div style={A.archivePanelHint}>Open an archived tryout in read-only mode.</div>
+            </div>
+            <div style={A.archivePanelList}>
+              {archivedEvents.map((event) => (
+                <button
+                  key={event.id}
+                  className="archive-panel-item"
+                  type="button"
+                  onClick={() => { onSelect(event.id); setOpen(false); }}
+                >
+                  <span>
+                    <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)', marginBottom: 2 }}>
+                      {event.name}
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--text3)' }}>
+                      {event.season} · Archived {fmt.date(event.archived_at)}
+                    </div>
+                  </span>
+                  <span style={{ color: 'var(--text3)', fontSize: 14, flexShrink: 0 }}>↗</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export function CountUp({ end, duration = 800, prefix = '', suffix = '' }) {
   const [value, setValue] = useState(0);
   const ref = useRef(null);
