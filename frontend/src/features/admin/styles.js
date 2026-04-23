@@ -138,6 +138,64 @@ export const ADMIN_CSS = `
       gap: 6px;
     }
   }
+
+  /* Setup page tabs */
+  .setup-tabs {
+    display: flex;
+    gap: 2px;
+    border-bottom: 2px solid var(--border);
+    margin-bottom: 22px;
+  }
+  .setup-tab {
+    padding: 10px 20px;
+    background: none;
+    border: none;
+    border-bottom: 3px solid transparent;
+    margin-bottom: -2px;
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+    color: var(--text3);
+    font-family: 'Nunito', sans-serif;
+    transition: color 0.15s, border-color 0.15s;
+    border-radius: 6px 6px 0 0;
+  }
+  .setup-tab:hover { color: var(--text); background: var(--bg3); }
+  .setup-tab.active { color: var(--maroon); border-bottom-color: var(--maroon); background: none; }
+
+  /* Roster player table */
+  .roster-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .roster-table th {
+    text-align: left; padding: 8px 12px;
+    font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.07em; color: var(--text3);
+    border-bottom: 2px solid var(--border);
+    background: var(--bg3);
+  }
+  .roster-table th:first-child { border-radius: 8px 0 0 0; }
+  .roster-table th:last-child { border-radius: 0 8px 0 0; }
+  .roster-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  .roster-table tr:last-child td { border-bottom: none; }
+  .roster-table tbody tr:hover td { background: var(--bg3); }
+
+  /* Color swatch */
+  .color-swatch {
+    width: 34px; height: 34px; border-radius: 50%; cursor: pointer;
+    border: 3px solid rgba(0,0,0,0.08);
+    transition: transform 0.14s, box-shadow 0.14s;
+    flex-shrink: 0;
+  }
+  .color-swatch:hover { transform: scale(1.18); box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
+  .color-swatch.selected { box-shadow: 0 0 0 3px #fff, 0 0 0 5px currentColor; }
+
+  /* Archive dropdown panel */
+  .archive-panel-item {
+    display: flex; align-items: center; justify-content: space-between;
+    width: 100%; padding: 10px 12px; background: none; border: none;
+    border-radius: 8px; cursor: pointer; text-align: left; gap: 8px;
+    transition: background 0.12s;
+  }
+  .archive-panel-item:hover { background: var(--bg3); }
 `;
 
 export const SB = {
@@ -869,4 +927,28 @@ export const A = {
   roleBadge: { display: 'inline-block', fontSize: 11, padding: '2px 8px', borderRadius: 20 },
   rankRow: { display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: '#FFFFFF', border: '1px solid var(--border)', borderRadius: 10, marginBottom: 6, boxShadow: '0 1px 3px rgba(0,0,0,0.03)' },
   rankBadge: { width: 28, height: 28, borderRadius: '50%', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+
+  // Setup page — shared
+  setupCard: { background: '#fff', border: '1px solid rgba(213,206,196,0.92)', borderRadius: 22, padding: '24px', boxShadow: '0 14px 36px rgba(26,18,18,0.06)', marginBottom: 16 },
+  setupSectionHead: { fontFamily: "'Barlow Condensed', sans-serif", fontSize: 22, fontWeight: 700, color: 'var(--text)', marginBottom: 4, letterSpacing: '0.01em' },
+  setupSectionSub: { fontSize: 13, color: 'var(--text3)', lineHeight: 1.6, marginBottom: 18 },
+  paletteRow: { display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginTop: 12 },
+  rosterCard: { background: '#fff', border: '1px solid rgba(213,206,196,0.92)', borderRadius: 22, padding: '24px', boxShadow: '0 14px 36px rgba(26,18,18,0.06)' },
+  rosterActions: { display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 16 },
+  rosterEmpty: { textAlign: 'center', padding: '36px 20px', color: 'var(--text3)', fontSize: 13, borderRadius: 14, border: '1px dashed rgba(213,206,196,0.88)', background: 'rgba(255,255,255,0.62)' },
+  archivePanelOverlay: { position: 'fixed', inset: 0, zIndex: 190 },
+  archivePanel: {
+    position: 'fixed',
+    width: 340,
+    background: '#fff',
+    borderRadius: 18,
+    border: '1px solid var(--border)',
+    boxShadow: '0 20px 48px rgba(0,0,0,0.18)',
+    zIndex: 200,
+    overflow: 'hidden',
+  },
+  archivePanelHead: { padding: '16px 18px 12px', borderBottom: '1px solid var(--border)', background: 'var(--bg3)' },
+  archivePanelTitle: { fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--text3)', marginBottom: 2 },
+  archivePanelHint: { fontSize: 12, color: 'var(--text3)', lineHeight: 1.5 },
+  archivePanelList: { maxHeight: 300, overflowY: 'auto', padding: '8px' },
 };
