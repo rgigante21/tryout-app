@@ -841,7 +841,7 @@ export default function Admin() {
               openWorkspace={openWorkspace}
               openCheckIn={() => goTo('/admin/checkin')}
               openSessions={() => goTo('/admin/sessions')}
-              openTryoutSetup={() => goTo('/admin/events')}
+              openTryoutSetup={user?.role === 'admin' ? () => goTo('/admin/events') : undefined}
               openResults={() => goTo('/admin/results')}
             />
           )}
