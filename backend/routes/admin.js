@@ -592,4 +592,32 @@ router.get('/sessions/:id/completion', ...guard, async (req, res) => {
   }
 });
 
+// Org settings — branding
+router.get('/org', ...guard, async (req, res) => {
+  try {
+    const { rows: [org] } = await pool.query(
+      'SELECT accent_color FROM organizations WHERE id = $1',
+      [req.orgId]
+    );
+    res.json({ org: org || { accent_color: '#6B1E2E' } });
+  } catch (err) {
+    console.error('org settings error:', err);
+    res.status(500).json({ error: 'Failed to load org settings' });
+  }
+});
+
+router.patch('/org', ...adminGuard, async (req, res) => {
+  try {
+    const { accentColor } = req.body;
+    const { rows: [org] } = await pool.query(
+      'UPDATE organizations SET accent_color = $1 WHERE id = $2 RETURNING accent_color',
+      [accentColor || '#6B1E2E', req.orgId]
+    );
+    res.json({ org });
+  } catch (err) {
+    console.error('org update error:', err);
+    res.status(500).json({ error: 'Failed to update org settings' });
+  }
+});
+
 module.exports = router;

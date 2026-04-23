@@ -117,6 +117,8 @@ export default function Admin() {
   const [savingCoach, setSavingCoach] = useState(false);
   const [editCoachMsg, setEditCoachMsg] = useState({ type: '', text: '' });
 
+  const [orgAccentColor, setOrgAccentColor] = useState('#6B1E2E');
+
   const [newEvent, setNewEvent] = useState({ name: '', season: '', startDate: '', endDate: '' });
   const [creatingEvent, setCreatingEvent] = useState(false);
   const [showCreateEvent, setShowCreateEvent] = useState(false);
@@ -144,12 +146,13 @@ export default function Admin() {
 
   useEffect(() => {
     let ignore = false;
-    Promise.all([api.ageGroups(), api.events(), api.users()])
-      .then(([ag, ev, us]) => {
+    Promise.all([api.ageGroups(), api.events(), api.users(), api.orgSettings()])
+      .then(([ag, ev, us, orgResp]) => {
         if (ignore) return;
         setAgeGroups(ag.ageGroups);
         setEvents(ev.events);
         setUsers(us.users);
+        setOrgAccentColor(orgResp?.org?.accent_color || '#6B1E2E');
       })
       .catch((err) => {
         if (ignore) return;
@@ -774,7 +777,7 @@ export default function Admin() {
   }[route.view];
 
   return (
-    <div className="admin-shell" style={A.shell}>
+    <div className="admin-shell" style={{ ...A.shell, '--maroon': orgAccentColor, '--maroon-light': orgAccentColor + 'BB' }}>
       <style>{ADMIN_CSS}</style>
 
       <Sidebar currentNav={currentNav} user={user} logout={logout} onNavigate={goTo} />
@@ -952,6 +955,13 @@ export default function Admin() {
               allSessions={allSessions}
               sessLoading={sessLoading}
               ageGroups={ageGroups}
+              removeSession={removeSession}
+              updateStatus={updateStatus}
+              orgAccentColor={orgAccentColor}
+              onUpdateOrgColor={async (color) => {
+                await api.updateOrgSettings({ accentColor: color });
+                setOrgAccentColor(color);
+              }}
               showBlockWizard={showBlockWizard}
               setShowBlockWizard={setShowBlockWizard}
               blockWizard={blockWizard}

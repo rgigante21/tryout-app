@@ -165,4 +165,8 @@ export const api = {
 
   // Evaluation templates
   evaluationTemplates: () => request('GET', '/evaluation-templates'),
+
+  // Org settings — branding
+  orgSettings:      ()     => request('GET',   '/admin/org'),
+  updateOrgSettings: (data) => request('PATCH', '/admin/org', data),
 };

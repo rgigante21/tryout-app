@@ -1,0 +1,2 @@
+ALTER TABLE organizations
+  ADD COLUMN IF NOT EXISTS accent_color VARCHAR(7) DEFAULT '#6B1E2E';
