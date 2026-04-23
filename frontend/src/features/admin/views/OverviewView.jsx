@@ -98,7 +98,7 @@ function TodayCommandCenter({
   ));
 
   const attentionItems = [];
-  if (!activeEvent) {
+  if (!activeEvent && openTryoutSetup) {
     attentionItems.push({
       tone: 'red',
       title: 'Create a tryout',
@@ -123,7 +123,7 @@ function TodayCommandCenter({
       onAction: openSessions,
     });
   }
-  if (activeEvent && !ageGroups.length) {
+  if (activeEvent && !ageGroups.length && openTryoutSetup) {
     attentionItems.push({
       tone: 'red',
       title: 'No age groups yet',
@@ -182,7 +182,7 @@ function TodayCommandCenter({
         <div style={ov.commandActions}>
           <button onClick={openCheckIn} style={{ ...A.primaryBtn, borderRadius: 8 }}>Open Check-In</button>
           <button onClick={openSessions} style={ov.commandGhostBtn}>Manage Sessions</button>
-          <button onClick={openTryoutSetup} style={ov.commandGhostBtn}>Tryout Setup</button>
+          {openTryoutSetup && <button onClick={openTryoutSetup} style={ov.commandGhostBtn}>Tryout Setup</button>}
         </div>
       </div>
 
