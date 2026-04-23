@@ -78,6 +78,7 @@ export const api = {
   // Admin — events
   events:       ()               => request('GET',   '/admin/events'),
   createEvent:  (data)           => request('POST',  '/admin/events', data),
+  updateEvent:  (id, data)       => request('PATCH', `/admin/events/${id}`, data),
   archiveEvent: (id, archive)    => request('PATCH', `/admin/events/${id}/archive`, { archive }),
   eventStats:   (id)             => request('GET',   `/admin/events/${id}/stats`),
 
