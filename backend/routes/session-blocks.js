@@ -3,8 +3,9 @@ const pool    = require('../db/pool');
 const { authMiddleware, requireRole } = require('../middleware/auth');
 const { assignPlayersToBlock } = require('../utils/session-assignment');
 
-const router = express.Router();
-const guard  = [authMiddleware, requireRole('admin', 'coordinator')];
+const router     = express.Router();
+const guard      = [authMiddleware, requireRole('admin', 'coordinator')];
+const adminGuard = [authMiddleware, requireRole('admin')];
 
 // ── Helper: sync tryout_event dates from session min/max ──────────────
 async function syncEventDates(client, eventId) {
@@ -156,7 +157,7 @@ router.get('/:id', ...guard, async (req, res) => {
 //   ]
 // }
 // ─────────────────────────────────────────────────────────────────────
-router.post('/', ...guard, async (req, res) => {
+router.post('/', ...adminGuard, async (req, res) => {
   const {
     eventId, ageGroupId, blockType = 'skills', splitMethod = 'none',
     label, sessionDate, scoringMode = 'full',
@@ -298,7 +299,7 @@ router.post('/', ...guard, async (req, res) => {
 // PATCH /api/session-blocks/:id
 // Update block settings (split_method or player_assignment) and re-assign
 // ─────────────────────────────────────────────────────────────────────
-router.patch('/:id', ...guard, async (req, res) => {
+router.patch('/:id', ...adminGuard, async (req, res) => {
   const { splitMethod, playerAssignment } = req.body;
   const client = await pool.connect();
   try {
@@ -375,7 +376,7 @@ router.patch('/:id', ...guard, async (req, res) => {
 // POST /api/session-blocks/:id/reassign
 // Re-run auto-assignment for a block (useful after player import)
 // ─────────────────────────────────────────────────────────────────────
-router.post('/:id/reassign', ...guard, async (req, res) => {
+router.post('/:id/reassign', ...adminGuard, async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -461,7 +462,7 @@ router.get('/:id/suggest-ranges', ...guard, async (req, res) => {
 // DELETE /api/session-blocks/:id
 // Delete block and cascade to sessions + session_players
 // ─────────────────────────────────────────────────────────────────────
-router.delete('/:id', ...guard, async (req, res) => {
+router.delete('/:id', ...adminGuard, async (req, res) => {
   try {
     const lookup = await pool.query(
       'SELECT event_id FROM session_blocks WHERE id = $1', [req.params.id]

@@ -23,7 +23,8 @@ const { findOrCreatePlayer, upsertPlayerRegistration } = require('../utils/regis
 const { logAudit } = require('../utils/audit');
 
 const router = express.Router({ mergeParams: true });
-const guard  = [authMiddleware, requireRole('admin', 'coordinator')];
+const guard      = [authMiddleware, requireRole('admin', 'coordinator')];
+const adminGuard = [authMiddleware, requireRole('admin')];
 
 // ─────────────────────────────────────────
 // PLAYER FIELD ALIASES (SportsEngine-compatible)
@@ -607,7 +608,7 @@ router.get('/:eventId/import/assignments-template', ...guard, (_req, res) => {
 // Form fields: file (required), importType (required), ageGroupId (required for players/assignments)
 // ─────────────────────────────────────────
 
-router.post('/:eventId/import/upload', ...guard, upload.single('file'), async (req, res) => {
+router.post('/:eventId/import/upload', ...adminGuard, upload.single('file'), async (req, res) => {
   const { eventId } = req.params;
   const importType  = (req.body.importType || 'players').trim();
   const ageGroupId  = req.body.ageGroupId ? parseInt(req.body.ageGroupId) : null;
@@ -752,7 +753,7 @@ router.get('/:eventId/import/:batchId/preview', ...guard, async (req, res) => {
 // Commit valid batch rows to the database.
 // ─────────────────────────────────────────
 
-router.post('/:eventId/import/:batchId/commit', ...guard, async (req, res) => {
+router.post('/:eventId/import/:batchId/commit', ...adminGuard, async (req, res) => {
   const { eventId, batchId } = req.params;
 
   const event = await validateEvent(eventId, req.org_id);

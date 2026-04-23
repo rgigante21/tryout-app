@@ -124,7 +124,7 @@ router.get('/:id/siblings', authMiddleware, requireAssignedSessionAccess(), asyn
 });
 
 // POST /api/sessions
-router.post('/', authMiddleware, requireRole('admin', 'coordinator'), async (req, res) => {
+router.post('/', authMiddleware, requireRole('admin'), async (req, res) => {
   const { eventId, ageGroupId, name, sessionDate, startTime, sessionType = 'skills' } = req.body;
   if (!eventId || !ageGroupId || !name || !sessionDate || !startTime) {
     return res.status(400).json({ error: 'eventId, ageGroupId, name, sessionDate, and startTime are required' });
@@ -186,7 +186,7 @@ router.patch('/:id', authMiddleware, requireRole('admin', 'coordinator'), async 
 });
 
 // DELETE /api/sessions/:id
-router.delete('/:id', authMiddleware, requireRole('admin', 'coordinator'), async (req, res) => {
+router.delete('/:id', authMiddleware, requireRole('admin'), async (req, res) => {
   try {
     const lookup = await pool.query(
       'SELECT event_id FROM sessions WHERE id = $1 AND organization_id = $2',

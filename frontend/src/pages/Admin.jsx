@@ -52,6 +52,13 @@ export default function Admin() {
   const location = useLocation();
   const route = getAdminRoute(location.pathname);
 
+  const ADMIN_ONLY_VIEWS = new Set(['events', 'workspace', 'groups', 'groupDetail', 'importExport', 'coaches']);
+  useEffect(() => {
+    if (user?.role === 'coordinator' && ADMIN_ONLY_VIEWS.has(route.view)) {
+      navigate('/admin/overview', { replace: true });
+    }
+  }, [user, route.view, navigate]);
+
   const [ageGroups, setAgeGroups] = useState([]);
   const [events, setEvents] = useState([]);
   const [users, setUsers] = useState([]);

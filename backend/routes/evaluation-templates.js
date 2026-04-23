@@ -2,8 +2,9 @@ const express = require('express');
 const pool    = require('../db/pool');
 const { authMiddleware, requireRole } = require('../middleware/auth');
 
-const router = express.Router();
-const guard  = [authMiddleware, requireRole('admin', 'coordinator')];
+const router     = express.Router();
+const guard      = [authMiddleware, requireRole('admin', 'coordinator')];
+const adminGuard = [authMiddleware, requireRole('admin')];
 
 // GET /api/evaluation-templates
 // List all templates with their criteria, scoped to the current org
@@ -130,7 +131,7 @@ router.post('/', authMiddleware, requireRole('admin'), async (req, res) => {
 
 // PATCH /api/evaluation-templates/:id/assign-age-group
 // Set this template as default for an age group (both must belong to the same org)
-router.patch('/:id/assign-age-group', ...guard, async (req, res) => {
+router.patch('/:id/assign-age-group', ...adminGuard, async (req, res) => {
   const { ageGroupId } = req.body;
   if (!ageGroupId) return res.status(400).json({ error: 'ageGroupId required' });
   try {
