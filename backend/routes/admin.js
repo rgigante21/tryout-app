@@ -79,20 +79,14 @@ router.patch('/events/:id', ...adminGuard, async (req, res) => {
   }
   try {
     const r = await pool.query(
-      `UPDATE tryout_events
-       SET name = $1,
-           season = $2,
-           start_date = $3,
-           end_date = $4
-       WHERE id = $5
-         AND organization_id = $6
-       RETURNING *`,
+      `UPDATE tryout_events SET name=$1, season=$2, start_date=$3, end_date=$4
+       WHERE id=$5 AND organization_id=$6 RETURNING *`,
       [name, season, startDate, endDate, req.params.id, req.org_id]
     );
-    if (!r.rows[0]) return res.status(404).json({ error: 'Event not found' });
+    if (!r.rowCount) return res.status(404).json({ error: 'Event not found' });
     res.json({ event: r.rows[0] });
   } catch (err) {
-    res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ error: err.message });
   }
 });
 
