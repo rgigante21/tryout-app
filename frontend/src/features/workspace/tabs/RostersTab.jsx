@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { A } from '../../admin/styles';
+import RosterTable from '../../admin/RosterTable';
 
 export default function RostersTab({
   players,
@@ -152,33 +153,7 @@ export default function RostersTab({
       )}
 
       {players.length > 0 && (
-        <div style={A.playerTable}>
-          <div style={A.playerTableHdr}>
-            <span style={{ width: 50 }}>#</span>
-            <span style={{ flex: 1 }}>Name</span>
-            <span style={{ width: 44, textAlign: 'right' }}>Born</span>
-            <span style={{ width: 32 }} />
-          </div>
-          {players.map((p) => {
-            const born = p.date_of_birth
-              ? new Date(p.date_of_birth + 'T12:00:00').getFullYear()
-              : (p.birth_year ?? null);
-            return (
-              <div key={p.id} style={A.playerRow}>
-                <span style={A.pJersey}>#{p.jersey_number}</span>
-                <span style={A.pName}>{p.first_name} {p.last_name}</span>
-                <span style={{ width: 44, textAlign: 'right', fontSize: 12, color: 'var(--text3)', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
-                  {born ?? '—'}
-                </span>
-                <button
-                  onClick={() => onRemovePlayer(p.id)}
-                  style={{ ...A.iconBtn, color: 'var(--red-txt)' }}
-                  title="Remove"
-                >×</button>
-              </div>
-            );
-          })}
-        </div>
+        <RosterTable players={players} onRemovePlayer={onRemovePlayer} />
       )}
     </div>
   );
