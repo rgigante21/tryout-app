@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { A } from '../styles';
 import { BlockWizardPanel, STATUS_META, fmt } from '../shared';
 import { api } from '../../../utils/api';
+import RosterTable from '../RosterTable';
 
 export function SessionMiniCard({ sess, updateStatus, removeSession, onSaveSession }) {
   const [expanded, setExpanded] = useState(false);
@@ -489,29 +490,7 @@ export function GroupDetailView({
       )}
 
       {players.length > 0 && (
-        <div style={A.playerTable}>
-          <div style={A.playerTableHdr}>
-            <span style={{ width: 50 }}>#</span>
-            <span style={{ flex: 1 }}>Name</span>
-            <span style={{ width: 44, textAlign: 'right' }}>Born</span>
-            <span style={{ width: 32 }} />
-          </div>
-          {players.map((p) => {
-            const born = p.date_of_birth
-              ? new Date(p.date_of_birth + 'T12:00:00').getFullYear()
-              : (p.birth_year ?? null);
-            return (
-              <div key={p.id} style={A.playerRow}>
-                <span style={A.pJersey}>#{p.jersey_number}</span>
-                <span style={A.pName}>{p.first_name} {p.last_name}</span>
-                <span style={{ width: 44, textAlign: 'right', fontSize: 12, color: 'var(--text3)', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
-                  {born ?? '—'}
-                </span>
-                <button onClick={() => removePlayer(p.id)} style={{ ...A.iconBtn, color: 'var(--red-txt)' }} title="Remove">×</button>
-              </div>
-            );
-          })}
-        </div>
+        <RosterTable players={players} onRemovePlayer={removePlayer} />
       )}
     </div>
   );
