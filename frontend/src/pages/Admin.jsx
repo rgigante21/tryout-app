@@ -794,7 +794,14 @@ export default function Admin() {
     <div className="admin-shell" style={{ ...A.shell, '--maroon': orgAccentColor, '--maroon-light': orgAccentColor + 'BB' }}>
       <style>{ADMIN_CSS}</style>
 
-      <Sidebar currentNav={currentNav} user={user} logout={logout} onNavigate={goTo} />
+      <Sidebar
+        currentNav={currentNav}
+        user={user}
+        logout={logout}
+        onNavigate={goTo}
+        ageGroups={ageGroups}
+        activeGroupCode={route.view === 'rankings' ? route.groupCode : null}
+      />
 
       <div style={A.main}>
         <div style={A.topbar}>
