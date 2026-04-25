@@ -138,6 +138,7 @@ export default function Admin() {
 
   const [rosterPlayers, setRosterPlayers] = useState([]);
   const [rosterLoading, setRosterLoading] = useState(false);
+  const [rosterRefreshKey, setRosterRefreshKey] = useState(0);
 
   const availableEvents = events.filter((e) => !e.archived);
   const archivedEvents = events.filter((e) => e.archived);
@@ -328,7 +329,7 @@ export default function Admin() {
       .catch((err) => { if (!ignore) console.error(err); })
       .finally(() => { if (!ignore) setRosterLoading(false); });
     return () => { ignore = true; };
-  }, [activeEvent, activeGroup, route.view]);
+  }, [activeEvent, activeGroup, route.view, rosterRefreshKey]);
 
   const goTo = useCallback((path) => {
     setShowBlockWizard(false);
@@ -496,6 +497,26 @@ export default function Admin() {
     } catch (err) {
       alert(err.message);
     }
+  };
+
+  const handleRosterAddPlayer = async (data) => {
+    await api.addPlayer({ ...data, ageGroupId: activeGroup.id, eventId: activeEvent.id });
+    setRosterRefreshKey((k) => k + 1);
+  };
+
+  const handleRosterEditPlayer = async (registrationId, data) => {
+    await api.updatePlayer(registrationId, data);
+    setRosterRefreshKey((k) => k + 1);
+  };
+
+  const handleRosterRemovePlayer = async (registrationId) => {
+    await api.deletePlayer(registrationId);
+    setRosterRefreshKey((k) => k + 1);
+  };
+
+  const handleRosterMovePlayer = async (registrationId, targetGroupId) => {
+    await api.movePlayerToGroup(registrationId, targetGroupId);
+    setRosterRefreshKey((k) => k + 1);
   };
 
   const updateSlot = (i, field, val) => {
@@ -1142,6 +1163,12 @@ export default function Admin() {
               activeGroup={activeGroup}
               players={rosterPlayers}
               loading={rosterLoading}
+              ageGroups={ageGroups}
+              isAdmin={user?.role === 'admin'}
+              onAddPlayer={handleRosterAddPlayer}
+              onEditPlayer={handleRosterEditPlayer}
+              onRemovePlayer={handleRosterRemovePlayer}
+              onMovePlayer={handleRosterMovePlayer}
             />
           )}
 

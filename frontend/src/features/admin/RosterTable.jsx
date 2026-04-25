@@ -53,7 +53,7 @@ function SortHdr({ field, sortBy, sortDir, onSort, style, children }) {
   );
 }
 
-export default function RosterTable({ players, onRemovePlayer }) {
+export default function RosterTable({ players, onEditPlayer, onRemovePlayer }) {
   const [sortBy, setSortBy] = useState('jersey');
   const [sortDir, setSortDir] = useState('asc');
   const [filterPosition, setFilterPosition] = useState('');
@@ -154,7 +154,7 @@ export default function RosterTable({ players, onRemovePlayer }) {
           <SortHdr field="born" {...hdrProps} style={{ width: 52, justifyContent: 'flex-end' }}>Born</SortHdr>
           <SortHdr field="position" {...hdrProps} style={{ width: 68 }}>Pos</SortHdr>
           <SortHdr field="shot" {...hdrProps} style={{ width: 44 }}>Shot</SortHdr>
-          {onRemovePlayer && <span style={{ width: 36 }} />}
+          {(onEditPlayer || onRemovePlayer) && <span style={{ width: 60 }} />}
         </div>
 
         {displayed.length === 0 && (
@@ -178,12 +178,23 @@ export default function RosterTable({ players, onRemovePlayer }) {
               <span style={{ width: 44, fontSize: 12, color: 'var(--text2)', flexShrink: 0 }}>
                 {p.shot ?? '—'}
               </span>
-              {onRemovePlayer && (
-                <button
-                  onClick={() => onRemovePlayer(p.id)}
-                  style={{ ...A.iconBtn, color: 'var(--red-txt)' }}
-                  title="Remove"
-                >×</button>
+              {(onEditPlayer || onRemovePlayer) && (
+                <span style={{ display: 'flex', gap: 4, width: 60, flexShrink: 0, justifyContent: 'flex-end' }}>
+                  {onEditPlayer && (
+                    <button
+                      onClick={() => onEditPlayer(p)}
+                      style={{ ...A.iconBtn }}
+                      title="Edit"
+                    >✎</button>
+                  )}
+                  {onRemovePlayer && (
+                    <button
+                      onClick={() => onRemovePlayer(p)}
+                      style={{ ...A.iconBtn, color: 'var(--red-txt)' }}
+                      title="Remove / Move"
+                    >×</button>
+                  )}
+                </span>
               )}
             </div>
           );
