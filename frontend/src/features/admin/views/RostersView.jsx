@@ -40,7 +40,7 @@ function PlayerModal({ player, onSave, onClose, saving }) {
     jerseyNumber: player?.jersey_number != null ? String(player.jersey_number) : '',
     position:     player?.position     ?? '',
     shot:         player?.shot         ?? '',
-    birthYear:    player?.birth_year   ?? (player?.date_of_birth ? new Date(player.date_of_birth + 'T12:00:00').getFullYear() : ''),
+    birthYear:    player?.birth_year   ?? (player?.date_of_birth ? (parseInt(player.date_of_birth, 10) || '') : ''),
   });
 
   function set(k, v) { setForm(f => ({ ...f, [k]: v })); }
