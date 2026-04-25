@@ -294,6 +294,13 @@ router.delete('/players/:id', ...adminGuard, async (req, res) => {
         return res.status(404).json({ error: 'Player not found' });
       }
       const playerId = lookup.rows[0].player_id;
+      await client.query(
+        `DELETE FROM scores WHERE player_id = $1 AND session_id IN (
+           SELECT session_id FROM session_players WHERE registration_id = $2
+         )`,
+        [playerId, req.params.id]
+      );
+      await client.query('DELETE FROM session_players WHERE registration_id = $1', [req.params.id]);
       await client.query('DELETE FROM player_event_registrations WHERE id = $1', [req.params.id]);
       if (playerId) {
         await client.query(
@@ -314,6 +321,111 @@ router.delete('/players/:id', ...adminGuard, async (req, res) => {
       client.release();
     }
     res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+router.patch('/players/:id', ...adminGuard, async (req, res) => {
+  const { firstName, lastName, jerseyNumber, position, shot, birthYear } = req.body;
+  if (!firstName || !lastName || !jerseyNumber) {
+    return res.status(400).json({ error: 'firstName, lastName, jerseyNumber required' });
+  }
+  try {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const lookup = await client.query(
+        `SELECT per.player_id FROM player_event_registrations per
+         JOIN tryout_events te ON te.id = per.event_id
+         WHERE per.id = $1 AND te.organization_id = $2`,
+        [req.params.id, req.org_id]
+      );
+      if (!lookup.rows[0]) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'Player not found' });
+      }
+      const playerId = lookup.rows[0].player_id;
+      const dob = birthYear ? `${birthYear}-01-01` : null;
+      await client.query(
+        `UPDATE players SET first_name = $1, last_name = $2, birth_year = $3, date_of_birth = $4 WHERE id = $5`,
+        [firstName, lastName, birthYear || null, dob, playerId]
+      );
+      await client.query(
+        `UPDATE player_event_registrations SET jersey_number = $1, position = $2, shot = $3 WHERE id = $4`,
+        [jerseyNumber, position || null, shot || null, req.params.id]
+      );
+      const updated = await client.query(
+        `SELECT per.id, per.player_id, p.first_name, p.last_name, p.date_of_birth,
+                p.birth_year, per.jersey_number, per.position, per.shot, per.outcome,
+                per.age_group_id, per.event_id
+         FROM player_event_registrations per
+         JOIN players p ON p.id = per.player_id
+         WHERE per.id = $1`,
+        [req.params.id]
+      );
+      await client.query('COMMIT');
+      res.json({ player: updated.rows[0] });
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+router.post('/players/:id/move', ...adminGuard, async (req, res) => {
+  const { targetAgeGroupId } = req.body;
+  if (!targetAgeGroupId) return res.status(400).json({ error: 'targetAgeGroupId required' });
+  try {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const lookup = await client.query(
+        `SELECT per.player_id, per.event_id, per.age_group_id
+         FROM player_event_registrations per
+         JOIN tryout_events te ON te.id = per.event_id
+         WHERE per.id = $1 AND te.organization_id = $2`,
+        [req.params.id, req.org_id]
+      );
+      if (!lookup.rows[0]) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'Player not found' });
+      }
+      const { player_id: playerId, event_id: eventId } = lookup.rows[0];
+      const groupCheck = await client.query(
+        `SELECT ag.id FROM age_groups ag
+         JOIN tryout_events te ON te.id = ag.event_id
+         WHERE ag.id = $1 AND ag.event_id = $2 AND te.organization_id = $3`,
+        [targetAgeGroupId, eventId, req.org_id]
+      );
+      if (!groupCheck.rows[0]) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Target age group not found in this event' });
+      }
+      await client.query(
+        `DELETE FROM scores WHERE player_id = $1 AND session_id IN (
+           SELECT session_id FROM session_players WHERE registration_id = $2
+         )`,
+        [playerId, req.params.id]
+      );
+      await client.query('DELETE FROM session_players WHERE registration_id = $1', [req.params.id]);
+      await client.query(
+        'UPDATE player_event_registrations SET age_group_id = $1 WHERE id = $2',
+        [targetAgeGroupId, req.params.id]
+      );
+      await assignPlayerToSessions(client, playerId, targetAgeGroupId, eventId);
+      await client.query('COMMIT');
+      res.json({ success: true });
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
   }

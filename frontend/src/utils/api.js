@@ -87,7 +87,9 @@ export const api = {
   addPlayer:    (data)                => request('POST',   '/admin/players', data),
   deletePlayer: (id)                  => request('DELETE', `/admin/players/${id}`),
   bulkPlayers:  (data)                => request('POST',   '/admin/players/bulk', data),
-  setOutcome:   (id, outcome)         => request('PATCH',  `/admin/players/${id}/outcome`, { outcome }),
+  setOutcome:        (id, outcome)         => request('PATCH',  `/admin/players/${id}/outcome`, { outcome }),
+  updatePlayer:      (id, data)            => request('PATCH',  `/admin/players/${id}`, data),
+  movePlayerToGroup: (id, targetGroupId)   => request('POST',   `/admin/players/${id}/move`, { targetAgeGroupId: targetGroupId }),
 
   // Admin — session completion & finalization
   sessionCompletion: (id)          => request('GET',   `/admin/sessions/${id}/completion`),
