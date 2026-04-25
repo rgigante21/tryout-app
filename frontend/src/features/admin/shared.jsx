@@ -159,7 +159,14 @@ export function CountUp({ end, duration = 800, prefix = '', suffix = '' }) {
   return <>{prefix}{value.toLocaleString()}{suffix}</>;
 }
 
-export function Sidebar({ currentNav, user, logout, onNavigate }) {
+export function Sidebar({ currentNav, user, logout, onNavigate, ageGroups = [], activeGroupCode = null }) {
+  const [resultsOpen, setResultsOpen] = useState(currentNav === 'results');
+
+  useEffect(() => {
+    if (currentNav === 'results') setResultsOpen(true);
+    else setResultsOpen(false);
+  }, [currentNav]);
+
   return (
     <div style={SB.sidebar}>
       <div style={SB.logoBlock}>
@@ -177,19 +184,54 @@ export function Sidebar({ currentNav, user, logout, onNavigate }) {
             {section !== 'overview' && (
               <div style={SB.sectionLabel}>{section === 'tryouts' ? 'Tryouts' : 'People'}</div>
             )}
-            {items.map((item) => (
-              <button
-                key={item.id}
-                onClick={() => onNavigate(item.path)}
-                style={{
-                  ...SB.navBtn,
-                  ...(currentNav === item.id ? SB.navBtnActive : {}),
-                }}
-              >
-                <span style={SB.navIcon}>{item.icon}</span>
-                {item.label}
-              </button>
-            ))}
+            {items.map((item) => {
+              if (item.id === 'results') {
+                return (
+                  <div key={item.id}>
+                    <button
+                      onClick={() => setResultsOpen((v) => !v)}
+                      style={{
+                        ...SB.navBtn,
+                        ...(currentNav === item.id ? SB.navBtnActive : {}),
+                      }}
+                    >
+                      <span style={SB.navIcon}>{item.icon}</span>
+                      <span style={{ flex: 1 }}>{item.label}</span>
+                      <span style={{ fontSize: 10, opacity: 0.6 }}>{resultsOpen ? '▼' : '▶'}</span>
+                    </button>
+                    {resultsOpen && ageGroups.map((g) => {
+                      const code = g.code.toLowerCase();
+                      const isActive = code === activeGroupCode;
+                      return (
+                        <button
+                          key={g.id}
+                          onClick={() => onNavigate(`/admin/results/${code}/rankings`)}
+                          style={{
+                            ...SB.navSubBtn,
+                            ...(isActive ? SB.navSubBtnActive : {}),
+                          }}
+                        >
+                          {g.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                );
+              }
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => onNavigate(item.path)}
+                  style={{
+                    ...SB.navBtn,
+                    ...(currentNav === item.id ? SB.navBtnActive : {}),
+                  }}
+                >
+                  <span style={SB.navIcon}>{item.icon}</span>
+                  {item.label}
+                </button>
+              );
+            })}
           </div>
         );
       })}
