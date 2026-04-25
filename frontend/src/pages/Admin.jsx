@@ -14,6 +14,7 @@ import ResultsView from '../features/admin/views/ResultsView';
 import CheckInView from '../features/admin/views/CheckInView';
 import WorkspacePage from '../features/workspace/WorkspacePage';
 import ImportExportView from '../features/admin/views/ImportExportView';
+import RostersView from '../features/admin/views/RostersView';
 
 function getAdminRoute(pathname) {
   const workspaceMatch = matchPath('/admin/events/:eventId/age-groups/:ageGroupId', pathname);
@@ -25,6 +26,13 @@ function getAdminRoute(pathname) {
   if (resultsRankingsMatch) {
     return { view: 'rankings', groupCode: resultsRankingsMatch.params.groupCode, from: 'results' };
   }
+
+  const rosterGroupMatch = matchPath('/admin/rosters/:groupCode', pathname);
+  if (rosterGroupMatch) {
+    return { view: 'rosterGroup', groupCode: rosterGroupMatch.params.groupCode };
+  }
+
+  if (matchPath('/admin/rosters', pathname)) return { view: 'rosters' };
 
   const groupMatch = matchPath('/admin/groups/:groupCode', pathname);
   if (groupMatch) {
@@ -127,6 +135,9 @@ export default function Admin() {
   const [viewedEventId, setViewedEventId] = useState('');
 
   const [rankings, setRankings] = useState([]);
+
+  const [rosterPlayers, setRosterPlayers] = useState([]);
+  const [rosterLoading, setRosterLoading] = useState(false);
 
   const availableEvents = events.filter((e) => !e.archived);
   const archivedEvents = events.filter((e) => e.archived);
@@ -304,6 +315,18 @@ export default function Admin() {
     api.rankings(activeGroup.id, activeEvent.id)
       .then((data) => { if (!ignore) setRankings(data.rankings || []); })
       .catch((err) => { if (!ignore) console.error(err); });
+    return () => { ignore = true; };
+  }, [activeEvent, activeGroup, route.view]);
+
+  useEffect(() => {
+    if (route.view !== 'rosterGroup' || !activeGroup || !activeEvent) return;
+    let ignore = false;
+    setRosterPlayers([]);
+    setRosterLoading(true);
+    api.players(activeGroup.id, activeEvent.id)
+      .then((data) => { if (!ignore) setRosterPlayers(data.players || []); })
+      .catch((err) => { if (!ignore) console.error(err); })
+      .finally(() => { if (!ignore) setRosterLoading(false); });
     return () => { ignore = true; };
   }, [activeEvent, activeGroup, route.view]);
 
@@ -763,6 +786,7 @@ export default function Admin() {
   const currentNav = route.view === 'groupDetail' ? 'groups'
     : route.view === 'sessionGroup' ? 'sessions'
     : route.view === 'rankings' ? 'results'
+    : route.view === 'rosterGroup' ? 'rosters'
     : route.view === 'workspace' ? 'groups'
     : route.view;
   const backTarget = route.view === 'groupDetail'
@@ -771,7 +795,9 @@ export default function Admin() {
       ? { label: '← Sessions', to: '/admin/sessions' }
       : route.view === 'rankings'
         ? { label: '← Results', to: '/admin/results' }
-        : route.view === 'workspace'
+        : route.view === 'rosterGroup'
+          ? { label: '← Rosters', to: '/admin/rosters' }
+          : route.view === 'workspace'
           ? { label: '← Age Groups', to: '/admin/groups' }
           : null;
 
@@ -785,6 +811,8 @@ export default function Admin() {
     rankings: activeGroup ? `${activeGroup.name} Rankings` : 'Rankings',
     coaches: 'Coaches & Scorers',
     results: 'Results',
+    rosters: 'Rosters',
+    rosterGroup: activeGroup ? `${activeGroup.name} Roster` : 'Rosters',
     checkin: 'Check-In',
     importExport: 'Import / Export',
     workspace: workspaceAgeGroup ? `${workspaceAgeGroup.name} Workspace` : 'Workspace',
@@ -801,6 +829,7 @@ export default function Admin() {
         onNavigate={goTo}
         ageGroups={ageGroups}
         activeGroupCode={route.view === 'rankings' ? route.groupCode : null}
+        rostersActiveGroupCode={route.view === 'rosterGroup' ? route.groupCode : null}
       />
 
       <div style={A.main}>
@@ -1101,6 +1130,19 @@ export default function Admin() {
 
           {!loading && route.view === 'rankings' && (
             <RankingsView rankings={rankings} activeGroup={activeGroup} />
+          )}
+
+          {!loading && route.view === 'rosters' && (
+            <RostersView activeEvent={activeEvent} />
+          )}
+
+          {!loading && route.view === 'rosterGroup' && activeGroup && (
+            <RostersView
+              activeEvent={activeEvent}
+              activeGroup={activeGroup}
+              players={rosterPlayers}
+              loading={rosterLoading}
+            />
           )}
 
           {!loading && route.view === 'checkin' && (

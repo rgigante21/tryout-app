@@ -154,7 +154,7 @@ export default function RosterTable({ players, onRemovePlayer }) {
           <SortHdr field="born" {...hdrProps} style={{ width: 52, justifyContent: 'flex-end' }}>Born</SortHdr>
           <SortHdr field="position" {...hdrProps} style={{ width: 68 }}>Pos</SortHdr>
           <SortHdr field="shot" {...hdrProps} style={{ width: 44 }}>Shot</SortHdr>
-          <span style={{ width: 36 }} />
+          {onRemovePlayer && <span style={{ width: 36 }} />}
         </div>
 
         {displayed.length === 0 && (
@@ -178,11 +178,13 @@ export default function RosterTable({ players, onRemovePlayer }) {
               <span style={{ width: 44, fontSize: 12, color: 'var(--text2)', flexShrink: 0 }}>
                 {p.shot ?? '—'}
               </span>
-              <button
-                onClick={() => onRemovePlayer(p.id)}
-                style={{ ...A.iconBtn, color: 'var(--red-txt)' }}
-                title="Remove"
-              >×</button>
+              {onRemovePlayer && (
+                <button
+                  onClick={() => onRemovePlayer(p.id)}
+                  style={{ ...A.iconBtn, color: 'var(--red-txt)' }}
+                  title="Remove"
+                >×</button>
+              )}
             </div>
           );
         })}

@@ -39,6 +39,7 @@ export const NAV_ITEMS = [
   { id: 'groups',       label: 'Age Groups',      icon: '▤', section: 'tryouts', path: '/admin/groups',        roles: ['admin'] },
   { id: 'checkin',      label: 'Check-In',        icon: '✓', section: 'tryouts', path: '/admin/checkin' },
   { id: 'results',      label: 'Results',         icon: '★', section: 'tryouts', path: '/admin/results' },
+  { id: 'rosters',      label: 'Rosters',         icon: '≔', section: 'tryouts', path: '/admin/rosters' },
   { id: 'importExport', label: 'Import / Export', icon: '⇅', section: 'tryouts', path: '/admin/import-export', roles: ['admin'] },
   { id: 'coaches',      label: 'Coaches',         icon: '◯', section: 'people',  path: '/admin/coaches',       roles: ['admin'] },
 ];
@@ -159,12 +160,17 @@ export function CountUp({ end, duration = 800, prefix = '', suffix = '' }) {
   return <>{prefix}{value.toLocaleString()}{suffix}</>;
 }
 
-export function Sidebar({ currentNav, user, logout, onNavigate, ageGroups = [], activeGroupCode = null }) {
+export function Sidebar({ currentNav, user, logout, onNavigate, ageGroups = [], activeGroupCode = null, rostersActiveGroupCode = null }) {
   const [resultsOpen, setResultsOpen] = useState(currentNav === 'results');
+  const [rostersOpen, setRostersOpen] = useState(currentNav === 'rosters');
 
   useEffect(() => {
     if (currentNav === 'results') setResultsOpen(true);
     else setResultsOpen(false);
+  }, [currentNav]);
+
+  useEffect(() => {
+    setRostersOpen(currentNav === 'rosters');
   }, [currentNav]);
 
   return (
@@ -206,6 +212,39 @@ export function Sidebar({ currentNav, user, logout, onNavigate, ageGroups = [], 
                         <button
                           key={g.id}
                           onClick={() => onNavigate(`/admin/results/${code}/rankings`)}
+                          style={{
+                            ...SB.navSubBtn,
+                            ...(isActive ? SB.navSubBtnActive : {}),
+                          }}
+                        >
+                          {g.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                );
+              }
+              if (item.id === 'rosters') {
+                return (
+                  <div key={item.id}>
+                    <button
+                      onClick={() => setRostersOpen((v) => !v)}
+                      style={{
+                        ...SB.navBtn,
+                        ...(currentNav === item.id ? SB.navBtnActive : {}),
+                      }}
+                    >
+                      <span style={SB.navIcon}>{item.icon}</span>
+                      <span style={{ flex: 1 }}>{item.label}</span>
+                      <span style={{ fontSize: 10, opacity: 0.6 }}>{rostersOpen ? '▼' : '▶'}</span>
+                    </button>
+                    {rostersOpen && ageGroups.map((g) => {
+                      const code = g.code.toLowerCase();
+                      const isActive = code === rostersActiveGroupCode;
+                      return (
+                        <button
+                          key={g.id}
+                          onClick={() => onNavigate(`/admin/rosters/${code}`)}
                           style={{
                             ...SB.navSubBtn,
                             ...(isActive ? SB.navSubBtnActive : {}),
