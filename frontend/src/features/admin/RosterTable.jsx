@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { A } from './styles';
 
 function getBorn(p) {
-  if (p.date_of_birth) return new Date(p.date_of_birth + 'T12:00:00').getFullYear();
+  if (p.date_of_birth) return parseInt(p.date_of_birth, 10) || null;
   return p.birth_year ?? null;
 }
 

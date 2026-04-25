@@ -195,6 +195,7 @@ router.get('/players', ...guard, async (req, res) => {
          p.first_name,
          p.last_name,
          p.date_of_birth,
+         p.birth_year,
          p.gender,
          p.external_id,
          per.jersey_number,
