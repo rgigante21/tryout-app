@@ -88,6 +88,7 @@ To create scorer/coordinator accounts, use the **Coaches** section in the admin 
 | API        | http://localhost:4000            |
 | API health | http://localhost:4000/health     |
 | Postgres   | localhost:5432 (user: `postgres`, db: `tryoutapp`)  |
+| Mailhog UI | http://localhost:8025 (catches all outgoing email in dev) |
 
 ---
 
@@ -116,15 +117,17 @@ Auth uses **HttpOnly cookies** (not localStorage tokens). The browser sends the 
 
 ### Admin Dashboard (`/admin`)
 
-- **Overview** — Live dashboard showing active sessions, assigned scorers, check-in progress, and age group cards
+- **Overview (Today)** — Live dashboard showing active sessions, assigned scorers, check-in progress, and age group cards
+- **Tryout Setup (Events)** — Create and archive tryout events; view event stats by age group
 - **Age Groups** — Create and manage age groups (8U, 10U, 12U…); drill into each group to manage sessions and players
 - **Sessions** — Full session management per age group; date filtering; expand any session to edit details, view the player roster, reassign players, and manage scorers
 - **Session Blocks** — Wizard to create blocks of sessions with automatic player splits by last name, jersey number, or division; game session support with team assignment
-- **Players / Rosters** — Add players individually or import from a SportEngine CSV; players auto-assigned to sessions based on split logic
-- **Events** — Create and archive tryout events; view event stats by age group
-- **Coaches** — Create and manage user accounts (admin-only); edit profiles, reset passwords, assign to sessions
+- **Rosters** — Add players individually or via CSV import; players auto-assigned to sessions based on split logic
 - **Check-in** — Track player attendance with attendance status (checked-in, late arrival, no-show, excused)
 - **Results** — Post-tryout outcome tracking (moved up / retained / left program) per player
+- **Rankings** — Aggregate scoring view across scorers per age group / event
+- **Import / Export** — Two-phase CSV preview/commit (current + legacy formats); export rankings and rosters
+- **Coaches** — Create and manage user accounts (admin-only); edit profiles, reset passwords, assign to sessions
 
 ### Scorer View (`/score`)
 
@@ -141,6 +144,16 @@ Sessions progress through: `pending → active → scoring_complete → finalize
 - **scoring_complete:** Admin or coordinator marks scoring done; visible in admin
 - **finalized:** Admin-only; blocks further score edits and roster changes
 - All status transitions are audit-logged
+
+### Multi-Tenancy
+
+The app is multi-tenant: every account belongs to an `organization`, and tenant-owned data (events, age groups, players, sessions, scores, etc.) carries an `organization_id`.
+
+- `orgMiddleware` (`backend/middleware/org.js`) attaches `req.organizationId` on every authenticated route
+- App-layer `WHERE organization_id = $1` is the primary scope; Postgres RLS is the safety net
+- `scripts/audit-tenancy.js` is a static check that fails CI if any query on a Class 1 table is missing org scoping. Add `/* tenant-global: reason */` to whitelist intentional global queries (e.g. the scheduler).
+- New orgs are seeded via `backend/utils/seed-org.js`
+- Per-org branding (e.g. `accent_color`) is surfaced in the admin UI
 
 ---
 
@@ -185,34 +198,22 @@ Migrations live in `postgres/migrations/` and must be applied in order to existi
 
 > **DB credentials:** the database user is `postgres` and the database name is `tryoutapp`.
 
-### 001 — Production Readiness
+| File | What it does |
+|---|---|
+| `001_production_readiness.sql` | `audit_log` table, `attendance_status` on `session_players`, new session statuses (`scoring_complete`, `finalized`), `UNIQUE(session_id, player_id)` |
+| `002_player_shot_and_import_fields.sql` | `shot`, `date_of_birth`, `external_id`, `gender` on `players`; partial unique index on `(external_id, event_id)`; backfills `date_of_birth` from `birth_year` |
+| `003_drop_jersey_unique_constraint.sql` | Drops jersey uniqueness within a group; adds a non-unique index for performance |
+| `004_robustness.sql` | CHECK constraints, NOT NULL enforcement, missing indexes, `updated_at` triggers, `checked_in_at` automation, GIN index on `audit_log.details` |
+| `005_registration_model.sql` | `player_event_registrations` table; dual-writes roster/score references while preserving legacy `player_id` links |
+| `006_import_batch_tracking.sql` | `import_batches` + `import_batch_rows`; commit step reads pre-validated `mapped_data` instead of re-parsing |
+| `007_multi_tenant_foundation.sql` | `organizations` table; `organization_id` on Class 1 tables; RLS policies; consistency triggers; composite indexes |
+| `008_org_branding.sql` | `accent_color` (and related branding columns) on `organizations` |
 
-```bash
-docker exec -i tryout_db psql -U postgres -d tryoutapp \
-  < postgres/migrations/001_production_readiness.sql
-```
-
-Adds: `audit_log` table, `attendance_status` on `session_players`, new session status values (`scoring_complete`, `finalized`), `UNIQUE(session_id, player_id)` constraint.
-
-### 002 — Player Shot Hand and Import-Quality Fields
-
-```bash
-docker exec -i tryout_db psql -U postgres -d tryoutapp \
-  < postgres/migrations/002_player_shot_and_import_fields.sql
-```
-
-Adds: `shot VARCHAR(1)`, `date_of_birth DATE`, `external_id VARCHAR(100)`, `gender VARCHAR(10)` to `players`. Creates a partial unique index on `(external_id, event_id)` for upsert-on-reimport. Backfills `date_of_birth` from `birth_year` for existing rows.
-
-### 003 — Drop Jersey Uniqueness Constraint
-
-```bash
-docker exec -i tryout_db psql -U postgres -d tryoutapp \
-  < postgres/migrations/003_drop_jersey_unique_constraint.sql
-```
-
-Drops the `UNIQUE(jersey_number, age_group_id, event_id)` constraint so duplicate jersey numbers are allowed within a group. Adds a non-unique index on the same columns for query performance.
-
-> **Apply order:** 001 → 002 → 003. Apply 002 before 003.
+> **Apply order:** sequentially, 001 → 008. To apply a single migration to a running DB:
+> ```bash
+> docker exec -i tryout_db psql -U postgres -d tryoutapp \
+>   < postgres/migrations/<file>.sql
+> ```
 
 ### Fresh installs
 
@@ -295,12 +296,32 @@ GET    /sessions/:id/completion   Scorer completion stats for a session
 PATCH  /sessions/:id/finalize     { status: 'scoring_complete' | 'finalized' }
 ```
 
-### Import — `/api/import`
+### Import — `/api/import` (current two-phase, batch-tracked)
 
 ```
-POST   /preview                   Parse CSV, return preview + summary
-POST   /commit                    Import validated players (SportEngine format)
+POST   /preview                   Parse CSV, persist to import_batches, return preview + summary
+POST   /commit                    Commit a previously previewed batch atomically
 GET    /csv-template              Download blank import template
+```
+
+### Legacy Import — `/api/import-legacy`
+
+Older preview/commit pair retained for backward compatibility with the original SportEngine flow. New imports should use `/api/import`.
+
+### Export — `/api/export`
+
+```
+GET    /rankings/:ageGroupId/:eventId   CSV/JSON export of aggregated rankings
+GET    /rosters/:eventId                CSV export of event rosters
+```
+
+### Evaluation Templates — `/api/evaluation-templates`
+
+```
+GET    /                          List templates for the caller's organization
+POST   /                          Create a template (admin)
+PATCH  /:id                       Update a template
+DELETE /:id
 ```
 
 ---
@@ -309,14 +330,21 @@ GET    /csv-template              Download blank import template
 
 ```
 tryout-app/
-├── docker-compose.yml
+├── docker-compose.yml                # db, backend, frontend, mailhog
 ├── .env.example
+├── scripts/
+│   └── audit-tenancy.js              # Static check: every Class 1 query is org-scoped (CI gate)
 ├── postgres/
 │   ├── init.sql                      # Full schema + seed (run on fresh container)
 │   └── migrations/
-│       ├── 001_production_readiness.sql          # audit_log, attendance_status, session statuses
-│       ├── 002_player_shot_and_import_fields.sql # shot, dob, external_id, gender on players
-│       └── 003_drop_jersey_unique_constraint.sql # allow duplicate jersey numbers
+│       ├── 001_production_readiness.sql
+│       ├── 002_player_shot_and_import_fields.sql
+│       ├── 003_drop_jersey_unique_constraint.sql
+│       ├── 004_robustness.sql
+│       ├── 005_registration_model.sql
+│       ├── 006_import_batch_tracking.sql
+│       ├── 007_multi_tenant_foundation.sql
+│       └── 008_org_branding.sql
 ├── backend/
 │   ├── Dockerfile
 │   ├── index.js                      # Express app entry point
@@ -324,20 +352,34 @@ tryout-app/
 │   ├── db/pool.js                    # Postgres pool (SSL + timeouts in prod)
 │   ├── middleware/
 │   │   ├── auth.js                   # JWT cookie auth, role guards, resource-level session guard
+│   │   ├── org.js                    # Resolves and attaches req.organizationId
 │   │   ├── security.js               # Helmet, CORS, rate limiting, request ID
+│   │   ├── upload.js                 # Multer config for CSV uploads
 │   │   └── validate.js               # Structured request validation middleware
 │   ├── utils/
 │   │   ├── audit.js                  # Audit log writer
+│   │   ├── export-formatters.js      # CSV/JSON formatters for /api/export
+│   │   ├── parse-upload.js           # CSV parsing + header detection
+│   │   ├── registrations.js          # player_event_registrations helpers
+│   │   ├── seed-org.js               # New-org seeding
 │   │   └── session-assignment.js     # Player → session assignment logic
-│   └── routes/
-│       ├── auth.js                   # /api/auth/* (login, logout, me)
-│       ├── sessions.js               # /api/sessions/*
-│       ├── session-blocks.js         # /api/session-blocks/*
-│       ├── session-players.js        # /api/session-players/* (move)
-│       ├── scores.js                 # /api/scores/*
-│       ├── admin.js                  # /api/admin/*
-│       ├── import.js                 # /api/import/*
-│       └── evaluation-templates.js  # /api/evaluation-templates/*
+│   ├── routes/
+│   │   ├── auth.js                   # /api/auth/* (login, logout, me)
+│   │   ├── sessions.js               # /api/sessions/*
+│   │   ├── session-blocks.js         # /api/session-blocks/*
+│   │   ├── session-players.js        # /api/session-players/* (move)
+│   │   ├── scores.js                 # /api/scores/*
+│   │   ├── admin.js                  # /api/admin/*
+│   │   ├── import.js                 # /api/import/*  (batch-tracked two-phase)
+│   │   ├── import-legacy.js          # /api/import-legacy/*  (legacy preview/commit)
+│   │   ├── export.js                 # /api/export/*
+│   │   └── evaluation-templates.js   # /api/evaluation-templates/*
+│   └── tests/
+│       ├── auth.test.js
+│       ├── scores.test.js
+│       ├── sessions.test.js
+│       ├── multitenancy.test.js
+│       └── helpers.js
 └── frontend/
     ├── Dockerfile
     ├── vite.config.js                # /api proxy → localhost:4000
@@ -357,13 +399,15 @@ tryout-app/
             ├── shared.jsx
             └── views/
                 ├── OverviewView.jsx
+                ├── EventsView.jsx
                 ├── GroupsView.jsx
                 ├── SessionsView.jsx
-                ├── EventsView.jsx
-                ├── CoachesView.jsx
-                ├── RankingsView.jsx
+                ├── CheckInView.jsx
                 ├── ResultsView.jsx
-                └── CheckInView.jsx
+                ├── RankingsView.jsx
+                ├── RostersView.jsx
+                ├── ImportExportView.jsx
+                └── CoachesView.jsx
 ```
 
 ---
@@ -389,9 +433,14 @@ docker compose logs backend -f
 # Connect to database
 docker exec -it tryout_db psql -U postgres -d tryoutapp
 
-# Run production readiness migration on existing DB
+# Apply a specific migration to a running DB
 docker exec -i tryout_db psql -U postgres -d tryoutapp \
-  < postgres/migrations/001_production_readiness.sql
+  < postgres/migrations/<file>.sql
+
+# Run the static multi-tenant query audit
+node scripts/audit-tenancy.js
+# or, from backend/
+npm run audit-tenancy
 ```
 
 ---
@@ -400,7 +449,8 @@ docker exec -i tryout_db psql -U postgres -d tryoutapp \
 
 | Table                | Purpose                                                       |
 |----------------------|---------------------------------------------------------------|
-| `users`              | Admins, coordinators, and scorers                             |
+| `organizations`      | Tenant boundary; every Class 1 row carries `organization_id`  |
+| `users`              | Admins, coordinators, and scorers (scoped to an org)          |
 | `tryout_events`      | A tryout event (e.g. "Spring 2026 Tryouts")                   |
 | `age_groups`         | 8U, 10U, 12U, etc.                                            |
 | `session_blocks`     | Groups related sessions (same day, same split logic)          |
@@ -408,8 +458,10 @@ docker exec -i tryout_db psql -U postgres -d tryoutapp \
 | `session_players`    | Explicit player roster per session + attendance_status        |
 | `session_scorers`    | Scorer-to-session assignments                                 |
 | `players`            | Players registered for a tryout event                         |
+| `player_event_registrations` | Per-event registration record linking a player to an event |
 | `scores`             | Scorer evaluations (skating, puck skills, sense)              |
-| `evaluation_templates` | Configurable scoring criteria per age group               |
+| `evaluation_templates` | Configurable scoring criteria per age group                 |
+| `import_batches` / `import_batch_rows` | Two-phase CSV import staging              |
 | `audit_log`          | Security/ops event trail (login, role changes, score writes…) |
 
 ---
@@ -424,19 +476,15 @@ DB_HOST=localhost DB_USER=postgres DB_PASS=postgres DB_NAME=tryoutapp \
   JWT_SECRET=<32+ char secret> npm test
 ```
 
-**What is tested:**
-- Public `/register` endpoint is blocked (404)
-- Login sets HttpOnly cookie; response body never exposes the raw token
-- Login returns identical error for bad password vs. unknown email (no user enumeration)
-- Logout clears the auth cookie and requires authentication
-- `/me` requires a valid cookie and sets `Cache-Control: no-store`
-- Scorer can only submit scores for sessions they are assigned to
-- Scorer cannot score players outside the session roster
-- Finalized sessions reject score edits from scorers (admins bypass)
-- Scorer can fetch their own session roster; 403 for any other session
-- Move-player endpoint requires admin or coordinator role
+> Jest aliases `bcrypt` → `bcryptjs` via `moduleNameMapper` so the suite runs on macOS without the Docker-compiled Linux native binary.
 
-**CI:** `.github/workflows/ci.yml` runs the full suite plus `npm audit` and a frontend build check on every push and pull request.
+**Test files:**
+- `auth.test.js` — registration disabled, cookie-based auth, no user enumeration, `/me` cache headers
+- `scores.test.js` — scorer must be assigned to session, can't score off-roster players, finalized sessions reject edits, admins bypass
+- `sessions.test.js` — roster access guard, move-player role gating
+- `multitenancy.test.js` — cross-org reads/writes are rejected; `organization_id` filtering is enforced end-to-end
+
+**CI:** `.github/workflows/ci.yml` runs the full suite plus `npm audit`, `scripts/audit-tenancy.js`, and a frontend build check on every push and pull request.
 
 ---
 
@@ -498,8 +546,9 @@ ORDER BY created_at DESC;
 
 ## Known Limitations
 
-- No email notifications when a scorer is assigned to a session
+- No email notifications when a scorer is assigned to a session (Mailhog is wired in dev but no production transport is configured)
 - No mobile PWA install prompt
-- No PDF/CSV export for rankings
+- PDF export for rankings not implemented (CSV is available via `/api/export`)
 - Goalie-specific evaluation criteria not yet supported
 - Refresh-token rotation not yet implemented (access cookie TTL is 12h)
+- No self-service org signup; new tenants must be seeded via `backend/utils/seed-org.js`
