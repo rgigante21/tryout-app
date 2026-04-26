@@ -71,10 +71,11 @@ Applied in order. Fresh installs pick up everything via `postgres/init.sql` auto
 | `001_production_readiness.sql` | ✅ Applied | audit_log, attendance_status, scoring_complete/finalized session statuses |
 | `002_player_shot_and_import_fields.sql` | ✅ Applied | shot, date_of_birth, external_id, gender on players; partial unique index on external_id |
 | `003_drop_jersey_unique_constraint.sql` | ✅ Applied | Drops jersey uniqueness constraint; adds non-unique index |
-| `004_session_blocks.sql` | ✅ Applied | session_blocks table, block_type/split_method/session_type columns |
-| `005_evaluation_templates.sql` | ✅ Applied | evaluation_templates + evaluation_criteria tables |
-| `006_import_batches.sql` | ✅ Applied | import_batches + import_batch_rows tables |
-| `007_multi_tenant_foundation.sql` | ⏳ Pending | organizations table; organization_id on all Class 1 tables; RLS policies; consistency triggers; composite indexes |
+| `004_robustness.sql` | ✅ Applied | CHECK constraints, NOT NULL enforcement, missing indexes, updated_at triggers, checked_in_at automation, GIN index on audit_log.details |
+| `005_registration_model.sql` | ✅ Applied | player_event_registrations table; dual-writes roster/score references while preserving legacy player_id links |
+| `006_import_batch_tracking.sql` | ✅ Applied | import_batches + import_batch_rows; commit step reads pre-validated mapped_data instead of re-parsing |
+| `007_multi_tenant_foundation.sql` | ✅ Applied | organizations table; organization_id on Class 1 tables; RLS policies; consistency triggers; composite indexes |
+| `008_org_branding.sql` | ✅ Applied | accent_color (and related branding columns) on organizations |
 
 ## Default Credentials
 
@@ -94,10 +95,10 @@ postgres/ (init SQL scripts, PostgreSQL 16, port 5432)
 
 - `index.js` — Express entry point; mounts all routers
 - `db/pool.js` — shared PostgreSQL connection pool
-- `middleware/auth.js` — JWT validation (`authMiddleware`) and role guard (`requireRole`)
 - `scheduler.js` — cron job that auto-activates sessions 10 min before start time
-- `routes/` — one file per domain: `auth`, `sessions`, `scores`, `admin`, `session-blocks`, `import`, `evaluation-templates`
-- `utils/session-assignment.js` — player distribution logic across sessions
+- `routes/` — one file per domain: `auth`, `sessions`, `session-blocks`, `session-players`, `scores`, `admin`, `import` (two-phase preview/commit), `import-legacy` (legacy preview/commit), `export`, `evaluation-templates`
+- `middleware/` — `auth.js` (JWT + `requireRole`), `org.js` (resolves and attaches `req.organizationId`; required on every authenticated route), `security.js`, `validate.js`, `upload.js`
+- `utils/` — `session-assignment.js` (player distribution across sessions), `registrations.js`, `seed-org.js`, `audit.js`, `parse-upload.js`, `export-formatters.js`
 
 ### Frontend Structure (`frontend/src/`)
 
@@ -107,7 +108,7 @@ postgres/ (init SQL scripts, PostgreSQL 16, port 5432)
 - `components/ProtectedRoute.jsx` — role-based route guard
 - `pages/Score.jsx` — scorer view: pick session → evaluate players (skating, puck_skills, hockey_sense on 1–5 scale)
 - `pages/Admin.jsx` — admin dashboard; switches between sub-views based on URL segment
-- `features/admin/views/` — 7 admin sub-views: Overview, Events, Sessions, GroupIndex, GroupDetail, Coaches, Results/Rankings
+- `features/admin/views/` — 10 admin sub-views: `OverviewView` (Today), `EventsView` (Tryout Setup), `SessionsView`, `GroupsView` (Age Groups; consolidates the former `GroupIndex`/`GroupDetail`), `CheckInView`, `ResultsView`, `RankingsView`, `RostersView`, `ImportExportView`, `CoachesView`
 - `features/admin/shared.jsx` — shared UI utilities (formatting, status metadata, nav items)
 - `features/admin/styles.js` — shared styled component definitions
 
@@ -119,6 +120,16 @@ Three roles with escalating access:
 - `scorer` — can only view and submit scores for assigned sessions
 - `coordinator` — scorer + limited admin access
 - `admin` — full access
+
+Admin-only nav entries: **Tryout Setup**, **Age Groups**, **Import / Export**, **Coaches**. Coordinators see Today, Sessions, Check-In, Results, and Rosters. Role gating lives on each `navItems` entry in `features/admin/shared.jsx`.
+
+### Multi-Tenancy (Organizations)
+
+- Every authenticated route mounts `orgMiddleware` (`backend/middleware/org.js`), which resolves the caller's `organization_id` and attaches it to `req`.
+- Class 1 tables (tenant-owned: events, age groups, players, sessions, scores, etc.) carry `organization_id`. App-layer `WHERE organization_id = $1` is the primary scope; Postgres RLS is the safety net.
+- `scripts/audit-tenancy.js` (see Development Commands) enforces this in CI.
+- Branding: `organizations.accent_color` (migration 008) is surfaced in the admin UI.
+- New orgs are seeded via `backend/utils/seed-org.js`.
 
 ### Key Data Model Relationships
 
@@ -149,6 +160,7 @@ Admin uses URL-based routing — the `/admin` page reads the URL segment to pick
 
 - **Vite proxy**: `/api` proxies to `VITE_API_TARGET` (default `http://localhost:4000`). Docker Compose overrides this to `http://backend:4000` for container-to-container networking.
 - **Score page polling**: `Score.jsx` re-fetches the sessions list every 30s so `pending → active` flips automatically. Score drafts are held in a per-player map that survives tab switches within a session.
+- **Check-in gating** (`Score.jsx`): players who have not been checked in are rendered greyed-out and disabled. The check-in gate is enforced before `btnState` and `openPlayer` so scorers cannot evaluate non-attending players.
 
 ### Player Split Methods (`backend/utils/session-assignment.js`)
 

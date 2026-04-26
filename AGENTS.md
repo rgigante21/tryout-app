@@ -4,7 +4,7 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 ## What This Is
 
-A hockey tryout evaluation app for managing multi-day tryout events with scorers, players, age groups, and session-based evaluations. Built as a Docker monorepo.
+A hockey tryout evaluation app for managing multi-day tryout events with organizations, admins/coordinators/scorers, age groups, rosters, session blocks, check-in, scoring, rankings, and event-scoped import/export workflows. It is a Docker-based monorepo with a React/Vite frontend, Express API, and PostgreSQL 16 database.
 
 ## Development Commands
 
@@ -44,101 +44,173 @@ docker exec -i tryout_db psql -U postgres -d tryoutapp \
   < postgres/migrations/<file>.sql
 ```
 
-**Run the API security test suite:**
+**Run backend tests:**
 ```bash
+cd backend
 DB_HOST=localhost DB_USER=postgres DB_PASS=postgres DB_NAME=tryoutapp \
   JWT_SECRET=test-secret-minimum-32-chars-xxxxxxxxxxx npm test
 ```
-Tests live in `backend/tests/` and require a live Postgres DB. Use `moduleNameMapper` in Jest config to alias `bcrypt` → `bcryptjs` (pure JS) so tests run on macOS without the Docker-compiled Linux native binary.
+
+Tests live in `backend/tests/` and require a live Postgres DB. Jest maps `bcrypt` to `bcryptjs` in `backend/package.json` so tests run on macOS without a Docker-compiled native module.
+
+**Run the tenancy audit:**
+```bash
+cd backend && npm run audit-tenancy
+```
 
 ## Database Credentials
 
-The Postgres superuser is `postgres` (no separate `tryout` role). Database name is `tryoutapp`. Always use `-U postgres -d tryoutapp` when connecting via `docker exec`.
+The Docker Postgres service uses the values from `.env`. Local defaults are still expected to be `POSTGRES_USER=postgres`, `POSTGRES_DB=tryoutapp`, and the matching `POSTGRES_PASSWORD`. When connecting with `docker exec`, use `-U postgres -d tryoutapp`.
 
 ## Migrations
 
-Applied in order. Fresh installs pick up everything via `postgres/init.sql` automatically.
+Applied in order. Fresh installs pick up the full current schema via `postgres/init.sql`.
 
-| File | Status | What it does |
-|---|---|---|
-| `001_production_readiness.sql` | ✅ Applied | audit_log, attendance_status, scoring_complete/finalized session statuses |
-| `002_player_shot_and_import_fields.sql` | ✅ Applied | shot, date_of_birth, external_id, gender on players; partial unique index on external_id |
-| `003_drop_jersey_unique_constraint.sql` | ✅ Applied | Drops jersey uniqueness constraint; adds non-unique index |
+| File | What it does |
+|---|---|
+| `001_production_readiness.sql` | audit_log, attendance_status, scoring_complete/finalized session statuses |
+| `002_player_shot_and_import_fields.sql` | shot, date_of_birth, external_id, gender on players |
+| `003_drop_jersey_unique_constraint.sql` | drops jersey uniqueness; adds non-unique jersey lookup index |
+| `004_robustness.sql` | CHECK constraints, NOT NULL hardening, indexes, updated_at triggers, audit JSONB index |
+| `005_registration_model.sql` | adds `player_event_registrations`; dual-writes roster/score registration references |
+| `006_import_batch_tracking.sql` | adds `import_batches` and `import_batch_rows` for upload preview/commit |
+| `007_multi_tenant_foundation.sql` | adds `organizations`, org-scoped uniqueness, org IDs, RLS safety net |
+| `008_org_branding.sql` | adds organization accent color |
 
 ## Default Credentials
 
-- URL: `http://localhost:3000`
+- App URL: `http://localhost:3000`
 - Admin login: `admin@tryouts.local` / `Admin1234!`
-- Mailhog UI (catches all outgoing email): `http://localhost:8025`
+- Mailhog UI: `http://localhost:8025`
 
 ## Architecture
 
-```
+```text
 frontend/ (React 18 + Vite, port 3000)
 backend/  (Node.js + Express, port 4000)
-postgres/ (init SQL scripts, PostgreSQL 16, port 5432)
+postgres/ (init SQL + migrations, PostgreSQL 16, port 5432)
+scripts/  (repo-level utilities, including tenancy audit)
 ```
 
-### Backend Structure (`backend/`)
+### Backend Structure
 
-- `index.js` — Express entry point; mounts all routers
-- `db/pool.js` — shared PostgreSQL connection pool
-- `middleware/auth.js` — JWT validation (`authMiddleware`) and role guard (`requireRole`)
-- `scheduler.js` — cron job that auto-activates sessions 10 min before start time
-- `routes/` — one file per domain: `auth`, `sessions`, `scores`, `admin`, `session-blocks`, `import`, `evaluation-templates`
-- `utils/session-assignment.js` — player distribution logic across sessions
+- `backend/index.js` — Express entry point; validates env, registers security middleware, mounts routers, starts scheduler.
+- `backend/db/pool.js` — shared PostgreSQL pool. Do not create new pools in route files.
+- `backend/middleware/auth.js` — JWT cookie validation, role guards, and assigned-session access guard.
+- `backend/middleware/org.js` — derives `req.org_id` from `req.user.organization_id` and sets `app.current_org` for RLS.
+- `backend/middleware/security.js` — CORS, Helmet, request IDs, auth/API/import rate limiters.
+- `backend/middleware/upload.js` — CSV/XLSX upload validation for import endpoints.
+- `backend/routes/` — route files for `auth`, `sessions`, `session-blocks`, `session-players`, `scores`, `admin`, `import`, `import-legacy`, `export`, and `evaluation-templates`.
+- `backend/utils/registrations.js` — persistent player identity and event registration helpers.
+- `backend/utils/session-assignment.js` — roster assignment logic across session blocks.
+- `backend/utils/parse-upload.js` and `export-formatters.js` — import/export support.
+- `backend/scheduler.js` — auto-activates sessions 10 minutes before start time.
 
-### Frontend Structure (`frontend/src/`)
+### Frontend Structure
 
-- `App.jsx` — React Router root; defines 3 top-level routes: `/login`, `/score`, `/admin`
-- `hooks/useAuth.jsx` — auth context: login/logout, HTTP-only cookie session, current user
-- `utils/api.js` — single centralized API client; all backend calls go through here
-- `components/ProtectedRoute.jsx` — role-based route guard
-- `pages/Score.jsx` — scorer view: pick session → evaluate players (skating, puck_skills, hockey_sense on 1–5 scale)
-- `pages/Admin.jsx` — admin dashboard; switches between sub-views based on URL segment
-- `features/admin/views/` — 7 admin sub-views: Overview, Events, Sessions, GroupIndex, GroupDetail, Coaches, Results/Rankings
-- `features/admin/shared.jsx` — shared UI utilities (formatting, status metadata, nav items)
-- `features/admin/styles.js` — shared styled component definitions
+- `frontend/src/App.jsx` — top-level routes: `/login`, `/score`, `/admin/*`.
+- `frontend/src/hooks/useAuth.jsx` — auth context for cookie session, current user, login/logout, auth error handling.
+- `frontend/src/utils/api.js` — centralized API client. Components and hooks should not call `fetch` directly except for file download/upload helpers already modeled here.
+- `frontend/src/pages/Score.jsx` — scorer-facing session picker and evaluation screen.
+- `frontend/src/pages/Admin.jsx` — URL-based admin shell and view switcher.
+- `frontend/src/features/admin/views/` — admin views: Overview, Events, Sessions, Groups, Check-In, Results, Rankings, Rosters, Import/Export, Coaches.
+- `frontend/src/features/workspace/` — event + age-group workspace at `/admin/events/:eventId/age-groups/:ageGroupId` with Check-In, Rosters, Evaluations, and Results tabs.
+- `frontend/src/features/admin/shared.jsx` — nav items, status metadata, date formatting, sidebar, and default session block form state.
+- `frontend/src/features/admin/styles.js` — shared inline style objects and CSS used by admin/workspace views.
 
-### Auth & Roles
+## Auth, Roles, And Tenant Context
 
-JWT-based (12h expiration), stored in an HTTP-only cookie (not localStorage). Frontend sends `credentials: 'include'` on all API calls so cookies travel automatically. On mount, `useAuth` calls `GET /api/auth/me` to verify the session. Self-service registration is disabled (`POST /api/auth/register` → 404); all users are created admin-only via `POST /api/admin/users`.
+JWT auth uses a 12-hour `auth_token` HttpOnly cookie. `Authorization: Bearer` is still accepted by middleware for API tooling and tests. Frontend requests include `credentials: 'include'`.
 
-Three roles with escalating access:
-- `scorer` — can only view and submit scores for assigned sessions
-- `coordinator` — scorer + limited admin access
-- `admin` — full access
+Login accepts `{ email, password, subdomain? }`. `subdomain` is optional for the current single-org phase, but the JWT always includes `organization_id`; all non-auth API routers are mounted after `authMiddleware` and `orgMiddleware`.
 
-### Key Data Model Relationships
+Roles:
+- `scorer` — can view and submit scores for assigned sessions only.
+- `coordinator` — scorer plus limited admin access; cannot access admin-only setup views or finalize sessions as admin.
+- `admin` — full access.
 
-- `tryout_events` → `age_groups` → `players`
-- `sessions` → `session_players` (roster) + `session_scorers` (assigned scorers)
-- `sessions` belong to a `session_block` which organizes sessions by split strategy (last_name, jersey_range, etc.)
-- `scores` — upserted on `(session_id, player_id, scorer_id)` via `ON CONFLICT DO UPDATE`
-- Session status flow: `pending` → `active` (scheduler, 10 min before start) → `complete` → `scoring_complete` → `finalized`
-  - Coordinators can set `scoring_complete`; only admins can set `finalized`
-  - Once `finalized`, scores and player moves in that session are locked (admin-only override)
+Backend route protection pattern:
+- Mount API routers in `index.js` behind `authMiddleware, orgMiddleware` unless they are `/api/auth` or `/health`.
+- Inside routers, use `requireRole('admin')`, `requireRole('admin', 'coordinator')`, or `requireAssignedSessionAccess()`.
+- Every tenant-owned query must filter by `req.org_id` directly or join through an org-scoped parent such as `tryout_events`.
 
-### CSV Import
+## Key Data Model
 
-Two-phase: `POST /api/import/preview` returns what would be imported, then `POST /api/import/commit` executes it atomically.
+- `organizations` own users, events, age groups, sessions, players, templates, and audit logs.
+- `tryout_events` → `age_groups` → `player_event_registrations`.
+- `players` are persistent org-level identities; event-specific jersey, position, shot, will_tryout, and outcome live on `player_event_registrations`.
+- `sessions` belong to an event, age group, and usually a `session_block`.
+- `session_players` connects sessions to players and can carry `registration_id`, check-in state, attendance status, and team assignment.
+- `session_scorers` assigns evaluators to sessions.
+- `scores` still stores legacy aggregate criteria (`skating`, `puck_skills`, `hockey_sense`, `notes`) and can reference `registration_id`.
+- `score_entries` exists for per-criterion scoring, but export aggregation still uses the legacy aggregate score columns.
+- `import_batches` and `import_batch_rows` persist event-scoped upload preview, validation, errors, and commit data.
 
-### Frontend Routing Pattern
+Session status flow: `pending` → `active` → `complete` → `scoring_complete` → `finalized`.
 
-Admin uses URL-based routing — the `/admin` page reads the URL segment to pick which sub-view to render. Adding a new admin view means: create a view in `features/admin/views/`, add a route in `App.jsx`, and add a nav entry in `features/admin/shared.jsx`.
+Coordinators can set most statuses, but only admins can finalize. Finalized sessions lock scoring and player moves except where explicitly overridden by admin routes.
 
-### Backend Conventions
+## Import And Export
 
-- **Transactions**: multi-step DB writes use `pool.connect()` with explicit `BEGIN`/`COMMIT`/`ROLLBACK`. Functions that participate in a transaction accept a `client` argument instead of using `pool` directly.
-- **`syncEventDates()`**: called automatically when sessions are created/modified to keep `tryout_events.start_date/end_date` in sync with their sessions.
-- **Rate limiting** (`backend/middleware/security.js`): auth routes (`/api/auth/*`) — 30 req/15 min; all other API routes — 300 req/60 sec; both per IP.
-- **Audit logging** (`backend/utils/audit.js`): never log passwords, tokens, or secrets; audit failures don't crash the request. Tracked events: `login_success`, `login_failure`, `logout`, `session_status_changed`, `score_submitted`.
+There are two import systems:
+- Legacy CSV text import at `/api/import/preview`, `/api/import/commit`, and `/api/import/csv-template`; still used by `WorkspacePage` and `GroupsView`.
+- Current event-scoped import at `/api/events/:eventId/import/...`; accepts CSV/XLSX multipart uploads, writes `import_batches`, previews persisted row data, then commits the batch atomically.
 
-### Frontend Conventions
+Supported current import types are `players`, `evaluators`, and `session_assignments`.
 
-- **Vite proxy**: `/api` proxies to `VITE_API_TARGET` (default `http://localhost:4000`). Docker Compose overrides this to `http://backend:4000` for container-to-container networking.
-- **Score page polling**: `Score.jsx` re-fetches the sessions list every 30s so `pending → active` flips automatically. Score drafts are held in a per-player map that survives tab switches within a session.
+Event-scoped exports live under `/api/events/:eventId/export/...`:
+- `team-recommendations`
+- `sportsengine`
+- `preview`
 
-### Player Split Methods (`backend/utils/session-assignment.js`)
+Export endpoints are read-only except audit logging and can filter by age group, finalized-only, and outcome.
 
-Four strategies: `last_name` (A-Z alphabetic ranges), `jersey_range` (numeric min-max), `none` (all players to all sessions), `manual` (no auto-assign). Game blocks always assign all players to every session in the block regardless of split method.
+## Frontend Routing Pattern
+
+`/admin/*` is handled by `Admin.jsx`, not by one route per admin view in `App.jsx`. `getAdminRoute()` in `Admin.jsx` maps URL patterns to view IDs.
+
+Important admin URLs:
+- `/admin/overview`
+- `/admin/events`
+- `/admin/events/:eventId/age-groups/:ageGroupId?tab=checkin|rosters|evaluations|results`
+- `/admin/sessions` and `/admin/sessions/:groupCode`
+- `/admin/groups` and `/admin/groups/:groupCode`
+- `/admin/checkin`
+- `/admin/results` and `/admin/results/:groupCode/rankings`
+- `/admin/rosters` and `/admin/rosters/:groupCode`
+- `/admin/import-export`
+- `/admin/coaches`
+
+Adding an admin view usually means updating `Admin.jsx` route matching/rendering and adding a nav entry in `features/admin/shared.jsx`. `App.jsx` only needs changes for new top-level route families outside `/admin/*`.
+
+## Backend Conventions
+
+- Use the shared `pool` from `backend/db/pool.js`.
+- Use parameterized SQL only.
+- Multi-step writes use `pool.connect()` with explicit `BEGIN`/`COMMIT`/`ROLLBACK`.
+- Helpers participating in a transaction accept a `client` argument.
+- Return object-shaped JSON such as `{ sessions: [] }`, `{ player: {} }`, `{ error: '...' }`.
+- Keep route-level `try/catch` blocks and log useful context without leaking secrets.
+- `syncEventDates()` in `routes/sessions.js` keeps event start/end dates aligned with sessions.
+- Audit logging lives in `backend/utils/audit.js`; never log passwords, tokens, cookies, or secrets.
+- Import upload limits are tighter than general API limits; keep upload endpoints on `importUploadLimiter`.
+
+## Frontend Conventions
+
+- All normal API calls go through `frontend/src/utils/api.js`.
+- Use `useAuth()` as the source of truth for the current user; never read JWTs from localStorage.
+- Admin/workspace data loaders generally keep page state local and call API helpers directly.
+- `Score.jsx` polls assigned sessions so pending/active changes show up automatically.
+- `useWorkspaceData()` refreshes event/age-group workspace data every 15 seconds.
+- Keep coordinator/admin visibility in sync across `Admin.jsx` view guards and `NAV_ITEMS` role metadata.
+- The frontend uses inline style objects in `features/admin/styles.js`; match existing patterns before introducing new styling approaches.
+
+## Player Split Methods
+
+`backend/utils/session-assignment.js` supports these session block split methods:
+- `last_name` — alphabetic ranges based on player last initial.
+- `jersey_range` — numeric jersey ranges from event registration jersey numbers.
+- `none` — assign all eligible players to matching skills sessions.
+- `manual` — no automatic assignment.
+
+Game blocks are handled specially: players/team assignments from the block are copied into every game session in that block.
