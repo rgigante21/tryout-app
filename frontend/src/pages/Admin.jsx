@@ -158,6 +158,11 @@ export default function Admin() {
   }, [location.pathname, navigate]);
 
   useEffect(() => {
+    if (route.view !== 'rosters' || loading || !ageGroups.length) return;
+    navigate(`/admin/rosters/${ageGroups[0].code.toLowerCase()}`, { replace: true });
+  }, [route.view, loading, ageGroups, navigate]);
+
+  useEffect(() => {
     let ignore = false;
     Promise.all([api.ageGroups(), api.events(), api.users(), api.orgSettings()])
       .then(([ag, ev, us, orgResp]) => {
@@ -351,6 +356,10 @@ export default function Admin() {
 
   const openRankings = useCallback((group) => {
     navigate(`/admin/results/${group.code.toLowerCase()}/rankings`);
+  }, [navigate]);
+
+  const openRosterGroup = useCallback((group) => {
+    navigate(`/admin/rosters/${group.code.toLowerCase()}`);
   }, [navigate]);
 
   const openWorkspace = useCallback((group) => {
@@ -1156,7 +1165,11 @@ export default function Admin() {
           )}
 
           {!loading && route.view === 'rosters' && (
-            <RostersView activeEvent={activeEvent} />
+            <RostersView
+              activeEvent={activeEvent}
+              ageGroups={ageGroups}
+              onSelectAgeGroup={openRosterGroup}
+            />
           )}
 
           {!loading && route.view === 'rosterGroup' && activeGroup && (
