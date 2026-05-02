@@ -157,6 +157,11 @@ export default function Admin() {
   }, [location.pathname, navigate]);
 
   useEffect(() => {
+    if (route.view !== 'rosters' || loading || !ageGroups.length) return;
+    navigate(`/admin/rosters/${ageGroups[0].code.toLowerCase()}`, { replace: true });
+  }, [route.view, loading, ageGroups, navigate]);
+
+  useEffect(() => {
     let ignore = false;
     Promise.all([api.ageGroups(), api.events(), api.users(), api.orgSettings()])
       .then(([ag, ev, us, orgResp]) => {

@@ -225,10 +225,17 @@ export function Sidebar({ currentNav, user, logout, onNavigate, ageGroups = [], 
                 );
               }
               if (item.id === 'rosters') {
+                const firstRosterGroup = ageGroups[0]?.code?.toLowerCase();
                 return (
                   <div key={item.id}>
                     <button
-                      onClick={() => setRostersOpen((v) => !v)}
+                      onClick={() => {
+                        if (firstRosterGroup && (currentNav !== item.id || !rostersActiveGroupCode)) {
+                          onNavigate(`/admin/rosters/${firstRosterGroup}`);
+                        } else {
+                          setRostersOpen((v) => !v);
+                        }
+                      }}
                       style={{
                         ...SB.navBtn,
                         ...(currentNav === item.id ? SB.navBtnActive : {}),
