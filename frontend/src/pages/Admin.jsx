@@ -356,6 +356,10 @@ export default function Admin() {
     navigate(`/admin/results/${group.code.toLowerCase()}/rankings`);
   }, [navigate]);
 
+  const openRosterGroup = useCallback((group) => {
+    navigate(`/admin/rosters/${group.code.toLowerCase()}`);
+  }, [navigate]);
+
   const openWorkspace = useCallback((group) => {
     if (!activeEvent) return;
     navigate(`/admin/events/${activeEvent.id}/age-groups/${group.id}`);
@@ -1159,7 +1163,11 @@ export default function Admin() {
           )}
 
           {!loading && route.view === 'rosters' && (
-            <RostersView activeEvent={activeEvent} />
+            <RostersView
+              activeEvent={activeEvent}
+              ageGroups={ageGroups}
+              onSelectAgeGroup={openRosterGroup}
+            />
           )}
 
           {!loading && route.view === 'rosterGroup' && activeGroup && (

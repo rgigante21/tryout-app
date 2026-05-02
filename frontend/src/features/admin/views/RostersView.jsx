@@ -199,6 +199,7 @@ export default function RostersView({
   players = [],
   loading = false,
   ageGroups = [],
+  onSelectAgeGroup,
   onAddPlayer,
   onEditPlayer,
   onRemovePlayer,
@@ -262,9 +263,29 @@ export default function RostersView({
   }
 
   if (!activeGroup) {
+    if (!ageGroups.length) {
+      return (
+        <div style={A.emptyCard}>
+          No age groups are set up yet. Create age groups before managing rosters.
+        </div>
+      );
+    }
+
     return (
       <div style={A.emptyCard}>
-        Select an age group from the sidebar to view the roster.
+        <div style={{ marginBottom: 12 }}>Select an age group to view its roster.</div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
+          {ageGroups.map((group) => (
+            <button
+              key={group.id}
+              type="button"
+              style={A.primaryBtn}
+              onClick={() => onSelectAgeGroup?.(group)}
+            >
+              {group.name}
+            </button>
+          ))}
+        </div>
       </div>
     );
   }
