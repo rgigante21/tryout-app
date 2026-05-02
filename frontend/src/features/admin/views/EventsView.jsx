@@ -232,9 +232,9 @@ function DayPanel({
                         style={{ ...A.statusSelect, fontSize: 11, minHeight: 30, padding: '0 24px 0 8px', background: sm.bg, color: sm.textColor, border: `1px solid ${sm.border}` }}
                       >
                         <option value="pending">Pending</option>
-                        <option value="active">Active</option>
-                        <option value="complete">Complete</option>
-                        <option value="scoring_complete">Scoring Complete</option>
+                        <option value="active">On Ice</option>
+                        <option value="complete">Off Ice</option>
+                        <option value="scoring_complete">Scores In</option>
                         <option value="finalized">Finalized</option>
                       </select>
                       <button
@@ -256,10 +256,22 @@ function DayPanel({
   );
 }
 
-function OverviewTab({ viewedEvent, isArchivedView, orgAccentColor, onUpdateOrgColor, onUpdateEvent, archiveEvent, restoreEvent }) {
+function OverviewTab({ viewedEvent, isArchivedView, orgAccentColor, onUpdateOrgColor, orgFeatures, onUpdateOrgFeatures, onUpdateEvent, archiveEvent, restoreEvent }) {
   const [customColor, setCustomColor] = useState(orgAccentColor || '#6B1E2E');
   const [savingColor, setSavingColor] = useState(false);
   const [colorMsg, setColorMsg] = useState('');
+  const [savingFeature, setSavingFeature] = useState(null);
+
+  const toggleFeature = async (key, current) => {
+    setSavingFeature(key);
+    try {
+      await onUpdateOrgFeatures({ [key]: !current });
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setSavingFeature(null);
+    }
+  };
 
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState({});
@@ -425,6 +437,48 @@ function OverviewTab({ viewedEvent, isArchivedView, orgAccentColor, onUpdateOrgC
               {colorMsg}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Feature flags card */}
+      {!isArchivedView && onUpdateOrgFeatures && (
+        <div style={A.setupCard}>
+          <div style={A.setupSectionHead}>Organization Features</div>
+          <div style={A.setupSectionSub}>
+            Toggle optional capabilities for your organization. These apply across all tryout events.
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 12 }}>
+            {[
+              { key: 'multi_rink', label: 'Multi-rink support', description: 'Show ice surface field on sessions and display parallel rink columns in the session planner.' },
+            ].map(({ key, label, description }) => {
+              const enabled = Boolean(orgFeatures?.[key]);
+              return (
+                <div key={key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16 }}>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>{label}</div>
+                    <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 2 }}>{description}</div>
+                  </div>
+                  <button
+                    onClick={() => toggleFeature(key, enabled)}
+                    disabled={savingFeature === key}
+                    style={{
+                      flexShrink: 0, minWidth: 52, height: 28, borderRadius: 14, border: 'none',
+                      background: enabled ? 'var(--green)' : 'var(--border)',
+                      cursor: 'pointer', transition: 'background 0.2s', position: 'relative',
+                      opacity: savingFeature === key ? 0.6 : 1,
+                    }}
+                    title={enabled ? 'Disable' : 'Enable'}
+                  >
+                    <span style={{
+                      position: 'absolute', top: 4, left: enabled ? 28 : 4,
+                      width: 20, height: 20, borderRadius: '50%', background: '#fff',
+                      transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                    }} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
@@ -732,6 +786,8 @@ export default function EventsView({
   updateStatus,
   orgAccentColor,
   onUpdateOrgColor,
+  orgFeatures,
+  onUpdateOrgFeatures,
   onUpdateEvent,
 }) {
   const now = new Date();
@@ -930,6 +986,8 @@ export default function EventsView({
               isArchivedView={isArchivedView}
               orgAccentColor={orgAccentColor}
               onUpdateOrgColor={onUpdateOrgColor}
+              orgFeatures={orgFeatures}
+              onUpdateOrgFeatures={onUpdateOrgFeatures}
               onUpdateEvent={onUpdateEvent}
               archiveEvent={archiveEvent}
               restoreEvent={restoreEvent}

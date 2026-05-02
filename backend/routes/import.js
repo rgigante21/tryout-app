@@ -162,8 +162,8 @@ async function validateEvent(eventId, orgId) {
 // ─────────────────────────────────────────
 
 async function processPlayerRows(rows, eventId, ageGroupId, orgId) {
-  // Load existing context for duplicate detection
-  const [existingJerseyRes, externalIdRes, blocksRes, crossAgeJerseyRes] = await Promise.all([
+  // Load existing context for duplicate detection + birth year validation
+  const [existingJerseyRes, externalIdRes, blocksRes, crossAgeJerseyRes, eventRes, ageGroupRes] = await Promise.all([
     pool.query(
       `SELECT per.jersey_number FROM player_event_registrations per
        WHERE per.age_group_id = $1 AND per.event_id = $2`,
@@ -187,12 +187,26 @@ async function processPlayerRows(rows, eventId, ageGroupId, orgId) {
        WHERE per.event_id = $1 AND per.age_group_id != $2`,
       [eventId, ageGroupId]
     ),
+    pool.query(`SELECT start_date FROM tryout_events WHERE id = $1`, [eventId]),
+    pool.query(`SELECT max_age, birth_year_min, birth_year_max FROM age_groups WHERE id = $1`, [ageGroupId]),
   ]);
 
   const existingJerseys     = new Set(existingJerseyRes.rows.map(r => r.jersey_number));
   const existingExternalIds = new Set(externalIdRes.rows.map(r => r.external_id));
   const crossAgeJerseys     = new Set(crossAgeJerseyRes.rows.map(r => r.jersey_number));
   const sessions            = blocksRes.rows;
+
+  // Derive valid birth year range for this age group
+  const ag = ageGroupRes.rows[0] || {};
+  let validByMin = null, validByMax = null;
+  if (ag.max_age) {
+    const seasonYear = new Date(eventRes.rows[0]?.start_date).getFullYear();
+    validByMin = seasonYear - ag.max_age;
+    validByMax = seasonYear - ag.max_age + 1;
+  } else if (ag.birth_year_min && ag.birth_year_max) {
+    validByMin = ag.birth_year_min;
+    validByMax = ag.birth_year_max;
+  }
 
   // Count jersey occurrences within this batch for intra-file duplicate detection
   const batchJerseyCount = {};
@@ -244,6 +258,14 @@ async function processPlayerRows(rows, eventId, ageGroupId, orgId) {
     const dob = parseDateOfBirth(fields.date_of_birth);
     if (dob && new Date(dob) > new Date()) {
       warnings.push(`Date of birth ${dob} is in the future — please verify`);
+    }
+
+    // Birth year mismatch warning
+    const birthYear = parseInt(fields.birth_year) || (dob ? new Date(dob).getFullYear() : null);
+    if (birthYear && validByMin !== null && validByMax !== null) {
+      if (birthYear < validByMin || birthYear > validByMax) {
+        warnings.push(`Birth year ${birthYear} is outside the expected range (${validByMin}–${validByMax}) for this age group — please verify`);
+      }
     }
 
     const externalId = fields.external_id || null;

@@ -1,0 +1,109 @@
+# TryoutOPS
+
+A multi-tenant hockey tryout evaluation platform. Admins manage events, age groups, sessions, and player rosters. Scorers evaluate players on the ice. The platform targets hockey organizations of varying sizes and naming conventions.
+
+## Language
+
+### Organization & Events
+
+**Organization**: A hockey club or association that owns its own data, users, and branding. The top-level tenant unit.
+_Avoid_: Club, team, customer
+
+**Tryout Event**: A multi-day evaluation event tied to one Organization. Contains age groups, sessions, and players.
+_Avoid_: Tournament, camp
+
+**Season Year**: The calendar year in which a Tryout Event takes place, derived from the event's `start_date`. Used to calculate valid birth years for U-level Age Groups.
+
+### Age Groups
+
+**Age Group**: A player division within a Tryout Event. An Organization names it however they prefer. Two models exist:
+
+- **U-level Age Group**: Has a `max_age` (e.g., `8` for U8). Valid birth years are derived at runtime: `[season_year - max_age, season_year - max_age + 1]`. The window always spans exactly 2 birth years. The display name is freeform (e.g., "Mites", "U8", "Peewee").
+- **Birth Year Age Group**: Has explicit `birth_year_min` and `birth_year_max`. Used by organizations that group players by year of birth rather than age level (e.g., "2018/2019 Group"). `max_age` is null.
+
+If neither `max_age` nor `birth_year_min/max` is set, no birth year validation runs (e.g., "Open" groups).
+
+_Avoid_: Division, bracket, level
+
+### Import
+
+**Import Preview**: The first phase of a two-phase roster import. Parses and validates each row, returning per-row errors and warnings without writing to the database. Admins review before committing.
+
+**Import Commit**: The second phase. Atomically writes all valid rows; error and skipped rows are excluded. Cannot be undone — prevention of bad imports happens at the Preview stage.
+
+**Birth Year Mismatch Warning**: A warning surfaced during Import Preview when a player's `birth_year` falls outside the Age Group's valid range (derived or explicit). Does not block commit — it is the admin's responsibility to confirm or abort.
+
+_Avoid_: Upload, sync
+
+### Session Status
+
+**Session Status**: The lifecycle stage of a session. Five states in order:
+
+- **Pending**: Scheduled but not yet started. Auto-transitions to On Ice 10 minutes before start time.
+- **On Ice**: Session is actively running. Scorers can evaluate players. _(was: Active)_
+- **Off Ice**: Session has ended but scores may still be missing. _(was: Complete)_
+- **Scores In**: All scorers have submitted their evaluations. Coordinators can advance to this state. _(was: Scoring Complete)_
+- **Finalized**: Admin has locked the session. Scores and player moves are blocked. Coordinators understand this state but only Admins can set it.
+
+_Avoid_: Complete, Scoring Complete (old names — replaced)
+
+### Scorer Experience
+
+**Scorer**: A user who evaluates players on the ice during a session. Typically working from a phone on the bench.
+
+**Player Grid**: The primary scorer interface — a grid of jersey number buttons, color-coded by score status (yellow = incomplete, green = complete). Scorers find players by jersey number (they watch a player skate, then tap their number). This is the correct interaction model — do not replace with a list view.
+
+- Players who have not been checked in are disabled and greyed out. Scorers cannot evaluate non-attending players.
+- Mobile layout: 4 columns (not 5) for adequate tap target size.
+
+### Sessions & Today
+
+**Today View**: The live tryout night dashboard. Shows active and upcoming sessions at a glance. Handles session status changes (manual override) and scorer progress (drill into session for detail). Scorer-level breakdown lives one tap into a session — Today stays scannable.
+
+**Sessions View**: Setup and planning only. Used before tryout night to create session blocks, assign scorers, and manage the schedule. Not used during a live event.
+
+**Auto-advance (Scores In)**: When all scorers who submitted at least one score have completed all checked-in players, the session automatically advances to Scores In. Scorers who submitted zero scores (no-shows) are excluded from the requirement. Admin can manually override at any time.
+
+**Player Move**: Moving a player from one session to another. Available at any session status — not gated to On Ice. Primary use case: late-arriving or pre-notified player needs to move to a different time slot. Default destination: next session for the same Age Group. Cross-age-group moves are not standard but may be needed by other organizations. Scores are not carried over (moot in practice since moves happen before check-in).
+
+## Relationships
+
+- An **Organization** owns many **Tryout Events**
+- A **Tryout Event** has many **Age Groups**
+- A **U-level Age Group** derives its valid birth year range from `max_age` + the event's **Season Year**
+- A **Birth Year Age Group** stores its valid range explicitly as `birth_year_min` / `birth_year_max`
+- An **Import Preview** belongs to one **Tryout Event** and one **Age Group**
+
+### Multi-Tenancy & Feature Flags
+
+**Organization Features**: A JSONB `features` column on `organizations` controls which optional capabilities are enabled per org. Default is all flags off. Flags are added here rather than as individual boolean columns to avoid migrations per feature.
+
+Known flags (planned):
+- `multi_rink` (bool, default false) — shows ice surface field on sessions; calendar renders parallel rink columns when true
+- `birth_year_groups` (bool) — org uses birth year age groups instead of U-level
+- `cross_age_moves` (bool) — player moves can cross age group boundaries
+- `game_sessions` (bool) — enables team/line game session type (future)
+
+**Ice Surface**: A nullable text label on sessions (e.g., "Sheet 1", "East Rink"). Only visible when `multi_rink` feature flag is enabled for the org. Single-rink orgs never see this field.
+
+### Today View Layout
+
+**Today View** is a self-contained live operational screen for tryout night. All session management — status changes, scorer progress, player moves, and check-in — happens within this screen. Coordinators and admins do not navigate away from Today during a live event.
+
+**Session Detail Drawer**: Tapping a session card opens a slide-in drawer (~70% width). The drawer contains: scorer progress, player list with per-player check-in controls (quick mark late/no-show), player move action, and status advance button. The session list remains visible behind the drawer.
+
+**Check-in on Today**: The drawer provides quick per-player check-in actions for the 90% case (marking a late arrival, flagging a no-show). The dedicated Check-In page remains for bulk operations and larger coordinator/admin workflows.
+
+**Today View** layout rules:
+
+- **Sessions first** — the page leads with a session list grouped by status (On Ice Now / Up Next / Done). No large header or dashboard banner above them.
+- **Slim header** — event name + date + a warning badge (⚠ N) when Needs Attention items exist. Badge expands to show the warning list inline.
+- **Check-in display is status-aware** — Pending and On Ice sessions show check-in count prominently (with warning color if low). Off Ice and beyond show it small or not at all.
+- **No Age Groups section** — age group summary cards do not appear on Today. That's a planning/results concern.
+
+**Sidebar** — age group sub-items are removed from under Results and Rosters. Clicking Results or Rosters lands on those views directly; age group selection happens within the view. The Age Groups nav item itself remains.
+
+## Flagged ambiguities
+
+- "Mites - U8" was one field doing two jobs (display name + U-level). Resolved: `name` is freeform display; `max_age` is the machine-readable U-level number.
+- "Undo import" was discussed but rejected in favor of prevention at Import Preview time. There is no rollback on a committed import.

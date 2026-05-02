@@ -25,11 +25,11 @@ export const fmt = {
 };
 
 export const STATUS_META = {
-  pending: { dot: '#aaa', label: 'Pending', textColor: 'var(--text3)', bg: 'var(--bg3)', border: 'var(--border)' },
-  active: { dot: 'var(--gold)', label: 'Active', textColor: 'var(--amber-txt)', bg: 'var(--amber-bg)', border: 'var(--amber)' },
-  complete: { dot: 'var(--green)', label: 'Complete', textColor: 'var(--green-txt)', bg: 'var(--green-bg)', border: 'var(--green)' },
-  scoring_complete: { dot: 'var(--blue)', label: 'Scoring Complete', textColor: 'var(--blue-txt)', bg: 'var(--blue-bg)', border: 'var(--blue)' },
-  finalized: { dot: 'var(--maroon)', label: 'Finalized', textColor: 'var(--maroon)', bg: 'var(--maroon-bg)', border: 'var(--maroon)' },
+  pending:          { dot: '#aaa',              label: 'Pending',    textColor: 'var(--text3)',      bg: 'var(--bg3)',       border: 'var(--border)' },
+  active:           { dot: 'var(--gold)',        label: 'On Ice',     textColor: 'var(--amber-txt)', bg: 'var(--amber-bg)', border: 'var(--amber)'  },
+  complete:         { dot: 'var(--green)',        label: 'Off Ice',    textColor: 'var(--green-txt)', bg: 'var(--green-bg)', border: 'var(--green)'  },
+  scoring_complete: { dot: 'var(--blue)',         label: 'Scores In',  textColor: 'var(--blue-txt)',  bg: 'var(--blue-bg)',  border: 'var(--blue)'   },
+  finalized:        { dot: 'var(--maroon)',       label: 'Finalized',  textColor: 'var(--maroon)',    bg: 'var(--maroon-bg)',border: 'var(--maroon)' },
 };
 
 export const NAV_ITEMS = [
@@ -191,70 +191,19 @@ export function Sidebar({ currentNav, user, logout, onNavigate, ageGroups = [], 
               <div style={SB.sectionLabel}>{section === 'tryouts' ? 'Tryouts' : 'People'}</div>
             )}
             {items.map((item) => {
-              if (item.id === 'results') {
+              if (item.id === 'results' || item.id === 'rosters') {
                 return (
-                  <div key={item.id}>
-                    <button
-                      onClick={() => setResultsOpen((v) => !v)}
-                      style={{
-                        ...SB.navBtn,
-                        ...(currentNav === item.id ? SB.navBtnActive : {}),
-                      }}
-                    >
-                      <span style={SB.navIcon}>{item.icon}</span>
-                      <span style={{ flex: 1 }}>{item.label}</span>
-                      <span style={{ fontSize: 10, opacity: 0.6 }}>{resultsOpen ? '▼' : '▶'}</span>
-                    </button>
-                    {resultsOpen && ageGroups.map((g) => {
-                      const code = g.code.toLowerCase();
-                      const isActive = code === activeGroupCode;
-                      return (
-                        <button
-                          key={g.id}
-                          onClick={() => onNavigate(`/admin/results/${code}/rankings`)}
-                          style={{
-                            ...SB.navSubBtn,
-                            ...(isActive ? SB.navSubBtnActive : {}),
-                          }}
-                        >
-                          {g.name}
-                        </button>
-                      );
-                    })}
-                  </div>
-                );
-              }
-              if (item.id === 'rosters') {
-                return (
-                  <div key={item.id}>
-                    <button
-                      onClick={() => setRostersOpen((v) => !v)}
-                      style={{
-                        ...SB.navBtn,
-                        ...(currentNav === item.id ? SB.navBtnActive : {}),
-                      }}
-                    >
-                      <span style={SB.navIcon}>{item.icon}</span>
-                      <span style={{ flex: 1 }}>{item.label}</span>
-                      <span style={{ fontSize: 10, opacity: 0.6 }}>{rostersOpen ? '▼' : '▶'}</span>
-                    </button>
-                    {rostersOpen && ageGroups.map((g) => {
-                      const code = g.code.toLowerCase();
-                      const isActive = code === rostersActiveGroupCode;
-                      return (
-                        <button
-                          key={g.id}
-                          onClick={() => onNavigate(`/admin/rosters/${code}`)}
-                          style={{
-                            ...SB.navSubBtn,
-                            ...(isActive ? SB.navSubBtnActive : {}),
-                          }}
-                        >
-                          {g.name}
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <button
+                    key={item.id}
+                    onClick={() => onNavigate(item.path)}
+                    style={{
+                      ...SB.navBtn,
+                      ...(currentNav === item.id ? SB.navBtnActive : {}),
+                    }}
+                  >
+                    <span style={SB.navIcon}>{item.icon}</span>
+                    {item.label}
+                  </button>
                 );
               }
               return (
@@ -385,9 +334,9 @@ export function SessionCard({
               style={{ ...A.statusSelect, background: sm.bg, color: sm.textColor, border: `1px solid ${sm.border}` }}
             >
               <option value="pending">Pending</option>
-              <option value="active">Active</option>
-              <option value="complete">Complete</option>
-              <option value="scoring_complete">Scoring Complete</option>
+              <option value="active">On Ice</option>
+              <option value="complete">Off Ice</option>
+              <option value="scoring_complete">Scores In</option>
               <option value="finalized">Finalized</option>
             </select>
             <button onClick={() => startEditSession(sess)} style={A.iconBtn} title="Edit">✎</button>

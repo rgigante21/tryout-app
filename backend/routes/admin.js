@@ -25,18 +25,41 @@ router.get('/age-groups', ...guard, async (req, res) => {
 });
 
 router.post('/age-groups', ...adminGuard, async (req, res) => {
-  const { name, code, sortOrder } = req.body;
+  const { name, code, sortOrder, maxAge, birthYearMin, birthYearMax } = req.body;
   if (!name || !code) {
     return res.status(400).json({ error: 'name and code required' });
   }
   try {
     const r = await pool.query(
-      `INSERT INTO age_groups (organization_id, name, code, sort_order) VALUES ($1, $2, $3, $4) RETURNING *`,
-      [req.org_id, name, code.toUpperCase(), sortOrder || 0]
+      `INSERT INTO age_groups (organization_id, name, code, sort_order, max_age, birth_year_min, birth_year_max)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [req.org_id, name, code.toUpperCase(), sortOrder || 0,
+       maxAge || null, birthYearMin || null, birthYearMax || null]
     );
     res.status(201).json({ ageGroup: r.rows[0] });
   } catch (err) {
     if (err.code === '23505') return res.status(409).json({ error: 'Age group code already exists' });
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+router.patch('/age-groups/:id', ...adminGuard, async (req, res) => {
+  const { name, maxAge, birthYearMin, birthYearMax } = req.body;
+  try {
+    const r = await pool.query(
+      `UPDATE age_groups
+       SET name = COALESCE($1, name),
+           max_age = $2,
+           birth_year_min = $3,
+           birth_year_max = $4
+       WHERE id = $5 AND organization_id = $6
+       RETURNING *`,
+      [name || null, maxAge || null, birthYearMin || null, birthYearMax || null,
+       req.params.id, req.org_id]
+    );
+    if (!r.rows[0]) return res.status(404).json({ error: 'Age group not found' });
+    res.json({ ageGroup: r.rows[0] });
+  } catch (err) {
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -723,14 +746,14 @@ router.get('/sessions/:id/completion', ...guard, async (req, res) => {
   }
 });
 
-// Org settings — branding
+// Org settings — branding + feature flags
 router.get('/org', ...guard, async (req, res) => {
   try {
     const { rows: [org] } = await pool.query(
-      'SELECT accent_color FROM organizations WHERE id = $1',
+      'SELECT accent_color, features FROM organizations WHERE id = $1',
       [req.orgId]
     );
-    res.json({ org: org || { accent_color: '#6B1E2E' } });
+    res.json({ org: org || { accent_color: '#6B1E2E', features: {} } });
   } catch (err) {
     console.error('org settings error:', err);
     res.status(500).json({ error: 'Failed to load org settings' });
@@ -739,10 +762,26 @@ router.get('/org', ...guard, async (req, res) => {
 
 router.patch('/org', ...adminGuard, async (req, res) => {
   try {
-    const { accentColor } = req.body;
+    const { accentColor, features } = req.body;
+    const updates = [];
+    const params  = [];
+
+    if (accentColor !== undefined) {
+      params.push(accentColor || '#6B1E2E');
+      updates.push(`accent_color = $${params.length}`);
+    }
+    if (features !== undefined) {
+      // Merge incoming flags into existing — never wipes unknown flags
+      params.push(JSON.stringify(features));
+      updates.push(`features = features || $${params.length}::jsonb`);
+    }
+
+    if (!updates.length) return res.status(400).json({ error: 'Nothing to update' });
+
+    params.push(req.orgId);
     const { rows: [org] } = await pool.query(
-      'UPDATE organizations SET accent_color = $1 WHERE id = $2 RETURNING accent_color',
-      [accentColor || '#6B1E2E', req.orgId]
+      `UPDATE organizations SET ${updates.join(', ')} WHERE id = $${params.length} RETURNING accent_color, features`,
+      params
     );
     res.json({ org });
   } catch (err) {

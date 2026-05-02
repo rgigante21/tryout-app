@@ -448,7 +448,7 @@ const styles = {
   progressTrack:  { height: 4, background: 'var(--bg3)', borderRadius: 2, overflow: 'hidden' },
   progressFill:   { height: 4, background: 'var(--maroon-light)', borderRadius: 2, transition: 'width 0.3s' },
 
-  grid: { display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '8px' },
+  grid: { display: 'grid', gridTemplateColumns: `repeat(${window.innerWidth <= 480 ? 4 : 5}, 1fr)`, gap: '8px' },
 
   numBtn: {
     aspectRatio: '1', minHeight: 54, borderRadius: 'var(--radius)',

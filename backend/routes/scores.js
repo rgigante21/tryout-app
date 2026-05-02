@@ -6,6 +6,56 @@ const { resolveRegistrationForSession } = require('../utils/registrations');
 
 const router = express.Router();
 
+// After a score is saved, check if all active scorers have completed all checked-in players.
+// If so and the session is Off Ice (complete), auto-advance to Scores In (scoring_complete).
+async function checkAutoAdvanceScoresIn(sessionId, orgId) {
+  try {
+    const [sessionRes, checkedInRes, activeScorersRes] = await Promise.all([
+      pool.query(
+        `SELECT status FROM sessions WHERE id = $1 AND organization_id = $2`,
+        [sessionId, orgId]
+      ),
+      pool.query(
+        `SELECT COUNT(*)::int AS total FROM session_players WHERE session_id = $1 AND checked_in = true`,
+        [sessionId]
+      ),
+      pool.query(
+        `SELECT DISTINCT scorer_id FROM scores WHERE session_id = $1`,
+        [sessionId]
+      ),
+    ]);
+
+    if (sessionRes.rows[0]?.status !== 'complete') return;
+    const checkedInTotal = checkedInRes.rows[0].total;
+    if (checkedInTotal === 0 || activeScorersRes.rows.length === 0) return;
+
+    const completionRes = await pool.query(
+      `SELECT sc.scorer_id, COUNT(DISTINCT sc.player_id)::int AS scored_count
+       FROM scores sc
+       JOIN session_players sp ON sp.player_id = sc.player_id AND sp.session_id = sc.session_id
+       WHERE sc.session_id = $1 AND sp.checked_in = true
+       GROUP BY sc.scorer_id`,
+      [sessionId]
+    );
+
+    const scored = {};
+    completionRes.rows.forEach((r) => { scored[r.scorer_id] = r.scored_count; });
+
+    const allDone = activeScorersRes.rows.every(
+      (r) => (scored[r.scorer_id] || 0) >= checkedInTotal
+    );
+
+    if (allDone) {
+      await pool.query(
+        `UPDATE sessions SET status = 'scoring_complete' WHERE id = $1 AND status = 'complete'`,
+        [sessionId]
+      );
+    }
+  } catch (err) {
+    console.error('Auto-advance check failed (non-fatal):', err.message);
+  }
+}
+
 // POST /api/scores — submit or update a score
 // Security: scorer must be assigned to the session; player must belong to that session.
 router.post('/', authMiddleware, async (req, res) => {
@@ -91,6 +141,9 @@ router.post('/', authMiddleware, async (req, res) => {
     }, req.org_id);
 
     res.json({ score: result.rows[0] });
+
+    // Fire-and-forget: auto-advance session to Scores In if all active scorers are done
+    checkAutoAdvanceScoresIn(sessionId, req.org_id);
   } catch (err) {
     console.error('Submit score error:', err);
     res.status(500).json({ error: 'Server error' });

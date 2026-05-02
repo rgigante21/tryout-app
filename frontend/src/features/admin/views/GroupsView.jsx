@@ -74,9 +74,9 @@ export function SessionMiniCard({ sess, updateStatus, removeSession, onSaveSessi
             style={{ fontSize: 11, padding: '2px 6px', borderRadius: 6, background: sm.bg, color: sm.textColor, border: `1px solid ${sm.border}`, cursor: 'pointer', outline: 'none', fontFamily: 'inherit' }}
           >
             <option value="pending">Pending</option>
-            <option value="active">Active</option>
-            <option value="complete">Complete</option>
-            <option value="scoring_complete">Scoring Complete</option>
+            <option value="active">On Ice</option>
+            <option value="complete">Off Ice</option>
+            <option value="scoring_complete">Scores In</option>
             <option value="finalized">Finalized</option>
           </select>
           <button
@@ -165,22 +165,99 @@ export function SessionMiniCard({ sess, updateStatus, removeSession, onSaveSessi
   );
 }
 
+function byValidationLabel(g) {
+  if (g.max_age) return `U${g.max_age} · auto birth year`;
+  if (g.birth_year_min && g.birth_year_max) return `${g.birth_year_min}–${g.birth_year_max}`;
+  return 'No validation';
+}
+
+function BirthYearFields({ value, onChange }) {
+  const type = value.validationType || 'none';
+  return (
+    <div style={{ marginTop: 12 }}>
+      <label style={A.fieldLabel}>Birth year validation</label>
+      <div style={{ display: 'flex', gap: 12, marginBottom: 8, flexWrap: 'wrap' }}>
+        {[['none', 'None'], ['ulevel', 'U-level (max age)'], ['birthyear', 'Birth year range']].map(([v, label]) => (
+          <label key={v} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, cursor: 'pointer' }}>
+            <input type="radio" name="validationType" value={v} checked={type === v}
+              onChange={() => onChange({ ...value, validationType: v, maxAge: '', birthYearMin: '', birthYearMax: '' })} />
+            {label}
+          </label>
+        ))}
+      </div>
+      {type === 'ulevel' && (
+        <div style={{ maxWidth: 120 }}>
+          <label style={A.fieldLabel}>Max age (e.g. 8 for U8)</label>
+          <input type="number" min="4" max="20" placeholder="8" value={value.maxAge || ''}
+            onChange={(e) => onChange({ ...value, maxAge: e.target.value })} />
+        </div>
+      )}
+      {type === 'birthyear' && (
+        <div style={{ display: 'flex', gap: 12 }}>
+          <div style={{ flex: 1 }}>
+            <label style={A.fieldLabel}>Birth year min</label>
+            <input type="number" placeholder="2018" value={value.birthYearMin || ''}
+              onChange={(e) => onChange({ ...value, birthYearMin: e.target.value })} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <label style={A.fieldLabel}>Birth year max</label>
+            <input type="number" placeholder="2019" value={value.birthYearMax || ''}
+              onChange={(e) => onChange({ ...value, birthYearMax: e.target.value })} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function toApiFields(form) {
+  return {
+    maxAge:       form.validationType === 'ulevel'     ? parseInt(form.maxAge)       || null : null,
+    birthYearMin: form.validationType === 'birthyear'  ? parseInt(form.birthYearMin) || null : null,
+    birthYearMax: form.validationType === 'birthyear'  ? parseInt(form.birthYearMax) || null : null,
+  };
+}
+
 export function GroupsIndexView({ ageGroups, groupStats, openGroup, openWorkspace, onAddAgeGroup, showAdd, setShowAdd }) {
   const nextSortOrder = ageGroups.length > 0 ? Math.max(...ageGroups.map((g) => g.sort_order)) + 1 : 1;
-  const [newGroup, setNewGroup] = useState({ name: '', code: '', sortOrder: String(nextSortOrder) });
+  const [newGroup, setNewGroup] = useState({ name: '', code: '', sortOrder: String(nextSortOrder), validationType: 'none', maxAge: '', birthYearMin: '', birthYearMax: '' });
   const [creating, setCreating] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [editDraft, setEditDraft] = useState({});
+  const [saving, setSaving] = useState(false);
 
   const handleAdd = async () => {
     if (!newGroup.name || !newGroup.code) return;
     setCreating(true);
     try {
-      await onAddAgeGroup({ name: newGroup.name, code: newGroup.code, sortOrder: parseInt(newGroup.sortOrder) || 0 });
-      setNewGroup({ name: '', code: '', sortOrder: '0' });
+      await onAddAgeGroup({ name: newGroup.name, code: newGroup.code, sortOrder: parseInt(newGroup.sortOrder) || 0, ...toApiFields(newGroup) });
+      setNewGroup({ name: '', code: '', sortOrder: '0', validationType: 'none', maxAge: '', birthYearMin: '', birthYearMax: '' });
       setShowAdd(false);
     } catch (err) {
       alert(err.message);
     } finally {
       setCreating(false);
+    }
+  };
+
+  const startEdit = (e, g) => {
+    e.stopPropagation();
+    const type = g.max_age ? 'ulevel' : (g.birth_year_min ? 'birthyear' : 'none');
+    setEditDraft({ validationType: type, maxAge: g.max_age || '', birthYearMin: g.birth_year_min || '', birthYearMax: g.birth_year_max || '' });
+    setEditingId(g.id);
+  };
+
+  const saveEdit = async (g) => {
+    setSaving(true);
+    try {
+      await api.updateAgeGroup(g.id, toApiFields(editDraft));
+      // Refresh reflected via parent reload — trigger by closing
+      setEditingId(null);
+      window.location.reload(); // simple refresh; parent could lift state instead
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -201,16 +278,17 @@ export function GroupsIndexView({ ageGroups, groupStats, openGroup, openWorkspac
           <div style={A.formRow}>
             <div style={{ flex: 2 }}>
               <label style={A.fieldLabel}>Name</label>
-              <input placeholder="e.g. Mites (8U)" value={newGroup.name}
+              <input placeholder="e.g. Mites" value={newGroup.name}
                 onChange={(e) => setNewGroup((n) => ({ ...n, name: e.target.value }))} />
             </div>
             <div style={{ flex: 1 }}>
               <label style={A.fieldLabel}>Code</label>
-              <input placeholder="e.g. 8U" value={newGroup.code}
+              <input placeholder="e.g. U8" value={newGroup.code}
                 onChange={(e) => setNewGroup((n) => ({ ...n, code: e.target.value }))} />
             </div>
           </div>
-          <div style={{ marginTop: 10 }}>
+          <BirthYearFields value={newGroup} onChange={setNewGroup} />
+          <div style={{ marginTop: 12 }}>
             <button onClick={handleAdd} disabled={creating || !newGroup.name || !newGroup.code} style={A.saveBtn}>
               {creating ? 'Creating…' : 'Create Age Group'}
             </button>
@@ -222,26 +300,47 @@ export function GroupsIndexView({ ageGroups, groupStats, openGroup, openWorkspac
         {ageGroups.map((g) => {
           const stats = groupStats(g.code);
           return (
-            <div key={g.id} style={A.agCard} className="ag-card" onClick={() => openGroup(g)}>
-              <div style={A.agName}>{g.name}</div>
-              <div style={A.agStats}>
-                <div style={{ textAlign: 'center' }}>
-                  <div style={A.agStatVal}>{stats.total_players}</div>
-                  <div style={A.agStatLabel}>Players</div>
-                </div>
-                <div style={{ textAlign: 'center' }}>
-                  <div style={A.agStatVal}>{stats.total_sessions}</div>
-                  <div style={A.agStatLabel}>Sessions</div>
-                </div>
-              </div>
-              <span style={A.agLink}>Manage sessions & players →</span>
-              {openWorkspace && (
-                <span
-                  style={{ ...A.agLink, fontSize: 12, marginTop: 6, color: 'var(--maroon)', fontWeight: 700 }}
-                  onClick={(e) => { e.stopPropagation(); openWorkspace(g); }}
+            <div key={g.id} style={A.agCard} className="ag-card" onClick={() => editingId === g.id ? null : openGroup(g)}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div style={A.agName}>{g.name}</div>
+                <button
+                  onClick={(e) => editingId === g.id ? (e.stopPropagation(), setEditingId(null)) : startEdit(e, g)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--text3)', padding: '0 2px' }}
+                  title="Edit birth year validation"
                 >
-                  Open Workspace →
-                </span>
+                  {editingId === g.id ? '✕' : '✎'}
+                </button>
+              </div>
+              {editingId === g.id ? (
+                <div onClick={(e) => e.stopPropagation()}>
+                  <BirthYearFields value={editDraft} onChange={setEditDraft} />
+                  <button onClick={() => saveEdit(g)} disabled={saving} style={{ ...A.saveBtn, marginTop: 10, fontSize: 13 }}>
+                    {saving ? 'Saving…' : 'Save'}
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 8 }}>{byValidationLabel(g)}</div>
+                  <div style={A.agStats}>
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={A.agStatVal}>{stats.total_players}</div>
+                      <div style={A.agStatLabel}>Players</div>
+                    </div>
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={A.agStatVal}>{stats.total_sessions}</div>
+                      <div style={A.agStatLabel}>Sessions</div>
+                    </div>
+                  </div>
+                  <span style={A.agLink}>Manage sessions & players →</span>
+                  {openWorkspace && (
+                    <span
+                      style={{ ...A.agLink, fontSize: 12, marginTop: 6, color: 'var(--maroon)', fontWeight: 700 }}
+                      onClick={(e) => { e.stopPropagation(); openWorkspace(g); }}
+                    >
+                      Open Workspace →
+                    </span>
+                  )}
+                </>
               )}
             </div>
           );

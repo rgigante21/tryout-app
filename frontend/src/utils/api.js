@@ -72,8 +72,9 @@ export const api = {
   userSessions: (id)                          => request('GET',    `/admin/users/${id}/sessions`),
 
   // Admin — age groups
-  ageGroups:     ()     => request('GET',  '/admin/age-groups'),
-  createAgeGroup:(data) => request('POST', '/admin/age-groups', data),
+  ageGroups:      ()        => request('GET',   '/admin/age-groups'),
+  createAgeGroup: (data)    => request('POST',  '/admin/age-groups', data),
+  updateAgeGroup: (id, data) => request('PATCH', `/admin/age-groups/${id}`, data),
 
   // Admin — events
   events:       ()               => request('GET',   '/admin/events'),

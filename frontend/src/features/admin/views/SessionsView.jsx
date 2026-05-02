@@ -211,9 +211,9 @@ function SessionTile({
             style={{ ...A.statusSelect, background: sm.bg, color: sm.textColor, border: `1px solid ${sm.border}` }}
           >
             <option value="pending">Pending</option>
-            <option value="active">Active</option>
-            <option value="complete">Complete</option>
-            <option value="scoring_complete">Scoring Complete</option>
+            <option value="active">On Ice</option>
+            <option value="complete">Off Ice</option>
+            <option value="scoring_complete">Scores In</option>
             {canFinalize && <option value="finalized">Finalized</option>}
           </select>
           <button
@@ -513,6 +513,14 @@ export function SessionsIndexView({ ageGroups, groupStats, openSessionGroup }) {
   );
 }
 
+const chip = (active) => ({
+  padding: '5px 12px', borderRadius: 20, fontSize: 12, fontWeight: 700,
+  cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
+  border: `1px solid ${active ? 'var(--gold-dark)' : 'var(--border)'}`,
+  background: active ? 'var(--gold-bg)' : '#fff',
+  color: active ? 'var(--text)' : 'var(--text2)',
+});
+
 export default function SessionsView({
   showBlockWizard, setShowBlockWizard,
   blockWizard, setBlockWizard,
@@ -528,14 +536,21 @@ export default function SessionsView({
   assignScorer, unassignScorer, onChangeAssignment,
   user,
 }) {
-  const allSessionCount = filteredSessions.length;
+  // Group sessions by date for the planning view
+  const sessionsByDate = {};
+  filteredSessions.forEach((sess) => {
+    const d = sess.session_date?.slice(0, 10) || 'unscheduled';
+    if (!sessionsByDate[d]) sessionsByDate[d] = [];
+    sessionsByDate[d].push(sess);
+  });
+  const groupedDates = Object.keys(sessionsByDate).sort();
 
   return (
     <div style={A.stackedSection}>
       <div>
-        <div style={A.sectionLabel}>Session Board</div>
+        <div style={A.sectionLabel}>Session Planning</div>
         <div style={A.sectionIntro}>
-          Filter by age group or date, then open a session to update status, assign scorers, and review players without leaving the page.
+          Build and manage session blocks, assign scorers, and review rosters before tryout day.
         </div>
       </div>
 
@@ -552,67 +567,48 @@ export default function SessionsView({
         />
       )}
 
-      <div style={A.splitLayout}>
-        <aside style={A.sidePanel}>
-          <div style={A.sidePanelTitle}>Filters</div>
-          <div style={A.sidePanelText}>
-            Keep the board focused on one group or one tryout day at a time.
+      {/* ── Compact filter chips ── */}
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+        {uniqueDates.map((d) => (
+          <button key={d} onClick={() => setSessDateFilter(sessDateFilter === d ? 'all' : d)} style={chip(sessDateFilter === d)}>
+            {fmt.dateMed(d)}
+          </button>
+        ))}
+        {uniqueDates.length > 0 && ageGroups?.length > 0 && (
+          <span style={{ color: 'var(--border)', fontSize: 18, lineHeight: 1, padding: '0 2px' }}>|</span>
+        )}
+        {ageGroups?.map((g) => (
+          <button key={g.id} onClick={() => setAgeGroupFilter(ageGroupFilter === String(g.id) ? 'all' : String(g.id))} style={chip(ageGroupFilter === String(g.id))}>
+            {g.name}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Session list grouped by date ── */}
+      {sessLoading && <p style={A.muted}>Loading sessions…</p>}
+
+      {!sessLoading && filteredSessions.length === 0 && (
+        <div style={A.emptyCard}>
+          No sessions match these filters yet. Use <strong>+ Session Block</strong> to add sessions.
+        </div>
+      )}
+
+      {!sessLoading && groupedDates.map((d) => (
+        <div key={d}>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 10,
+            paddingBottom: 8, marginBottom: 10,
+            borderBottom: '2px solid var(--bg3)',
+          }}>
+            <span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 16, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--maroon)' }}>
+              {fmt.dateMed(d)}
+            </span>
+            <span style={{ fontSize: 12, color: 'var(--text3)', fontWeight: 600 }}>
+              {sessionsByDate[d].length} session{sessionsByDate[d].length !== 1 ? 's' : ''}
+            </span>
           </div>
-
-          {ageGroups?.length > 0 && (
-            <div style={{ marginTop: 16 }}>
-              <div style={{ ...A.fieldLabel, marginBottom: 8 }}>Age group</div>
-              <div style={A.quickNavList}>
-                <button onClick={() => setAgeGroupFilter('all')} style={{ ...A.quickNavBtn, ...(ageGroupFilter === 'all' ? { borderColor: 'var(--gold-dark)', background: 'var(--gold-bg)' } : {}) }}>
-                  <span>All age groups</span>
-                  <span style={A.quickNavMeta}>{ageGroups.length}</span>
-                </button>
-                {ageGroups.map((g) => (
-                  <button key={g.id} onClick={() => setAgeGroupFilter(String(g.id))} style={{ ...A.quickNavBtn, ...(ageGroupFilter === String(g.id) ? { borderColor: 'var(--gold-dark)', background: 'var(--gold-bg)' } : {}) }}>
-                    <span>{g.name}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div style={{ marginTop: 18 }}>
-            <div style={{ ...A.fieldLabel, marginBottom: 8 }}>Session date</div>
-            <div style={A.quickNavList}>
-              <button onClick={() => setSessDateFilter('all')} style={{ ...A.quickNavBtn, ...(sessDateFilter === 'all' ? { borderColor: 'var(--gold-dark)', background: 'var(--gold-bg)' } : {}) }}>
-                <span>All dates</span>
-                <span style={A.quickNavMeta}>{uniqueDates.length}</span>
-              </button>
-              {uniqueDates.map((d) => (
-                <button key={d} onClick={() => setSessDateFilter(d)} style={{ ...A.quickNavBtn, ...(sessDateFilter === d ? { borderColor: 'var(--gold-dark)', background: 'var(--gold-bg)' } : {}) }}>
-                  <span>{fmt.dateMed(d)}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        </aside>
-
-        <div style={A.contentStack}>
-          <div style={A.statStrip}>
-            {[
-              { label: 'Showing', value: allSessionCount },
-              { label: 'Age Groups', value: ageGroups?.length || 0 },
-              { label: 'Dates', value: uniqueDates.length },
-            ].map(({ label, value }) => (
-              <div key={label} style={A.statTile}>
-                <div style={A.statTileValue}>{value}</div>
-                <div style={A.statTileLabel}>{label}</div>
-              </div>
-            ))}
-          </div>
-
-          {sessLoading && <p style={A.muted}>Loading sessions…</p>}
-          {!sessLoading && filteredSessions.length === 0 && (
-            <div style={A.emptyCard}>No sessions match these filters yet. Use <strong>+ Session Block</strong> to create sessions.</div>
-          )}
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {!sessLoading && filteredSessions.map((sess) => (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 24 }}>
+            {sessionsByDate[d].map((sess) => (
               <SessionTile
                 key={sess.id} sess={sess}
                 scorers={sessionScorers[sess.id] || []} users={users}
@@ -627,7 +623,7 @@ export default function SessionsView({
             ))}
           </div>
         </div>
-      </div>
+      ))}
     </div>
   );
 }

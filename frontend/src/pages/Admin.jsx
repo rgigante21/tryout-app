@@ -126,6 +126,7 @@ export default function Admin() {
   const [editCoachMsg, setEditCoachMsg] = useState({ type: '', text: '' });
 
   const [orgAccentColor, setOrgAccentColor] = useState('#6B1E2E');
+  const [orgFeatures, setOrgFeatures]       = useState({});
 
   const [newEvent, setNewEvent] = useState({ name: '', season: '', startDate: '', endDate: '' });
   const [creatingEvent, setCreatingEvent] = useState(false);
@@ -165,6 +166,7 @@ export default function Admin() {
         setEvents(ev.events);
         setUsers(us.users);
         setOrgAccentColor(orgResp?.org?.accent_color || '#6B1E2E');
+        setOrgFeatures(orgResp?.org?.features || {});
       })
       .catch((err) => {
         if (ignore) return;
@@ -943,8 +945,6 @@ export default function Admin() {
 
           {!loading && route.view === 'overview' && (
             <OverviewView
-              dashboard={dashboard}
-              users={users}
               ageGroups={ageGroups}
               todayDate={todayDate}
               setTodayDate={setTodayDate}
@@ -952,15 +952,12 @@ export default function Admin() {
               todaySessions={todaySessions}
               todayScorers={todayScorers}
               todayCheckIns={todayCheckIns}
-              groupStats={groupStats}
               activeEvent={activeEvent}
-              openGroup={openGroup}
-              openRankings={openRankings}
-              openWorkspace={openWorkspace}
               openCheckIn={() => goTo('/admin/checkin')}
               openSessions={() => goTo('/admin/sessions')}
               openTryoutSetup={user?.role === 'admin' ? () => goTo('/admin/events') : undefined}
-              openResults={() => goTo('/admin/results')}
+              updateStatus={updateStatus}
+              user={user}
             />
           )}
 
@@ -1063,6 +1060,11 @@ export default function Admin() {
               onUpdateOrgColor={async (color) => {
                 await api.updateOrgSettings({ accentColor: color });
                 setOrgAccentColor(color);
+              }}
+              orgFeatures={orgFeatures}
+              onUpdateOrgFeatures={async (features) => {
+                const r = await api.updateOrgSettings({ features });
+                setOrgFeatures(r.org.features || {});
               }}
               onUpdateEvent={updateEvent}
               showBlockWizard={showBlockWizard}
