@@ -59,6 +59,7 @@ function buildApp() {
   app.use('/api/session-players', authMiddleware, orgMiddleware, require('../routes/session-players'));
   app.use('/api/scores',          authMiddleware, orgMiddleware, require('../routes/scores'));
   app.use('/api/admin',           authMiddleware, orgMiddleware, require('../routes/admin'));
+  app.use('/api/events',          authMiddleware, orgMiddleware, require('../routes/import'));
   app.use('/api/events',          authMiddleware, orgMiddleware, require('../routes/export'));
 
   app.get('/health', (_req, res) => res.json({ status: 'ok' }));

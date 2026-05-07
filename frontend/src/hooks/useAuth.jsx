@@ -30,6 +30,12 @@ export function AuthProvider({ children }) {
       .finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => {
+    const clearExpiredSession = () => setUser(null);
+    window.addEventListener('auth:expired', clearExpiredSession);
+    return () => window.removeEventListener('auth:expired', clearExpiredSession);
+  }, []);
+
   async function login(email, password) {
     const data = await api.login(email, password);
     // Server sets the HttpOnly cookie; we just store user profile in memory.

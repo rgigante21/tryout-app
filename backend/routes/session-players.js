@@ -9,6 +9,7 @@ const pool    = require('../db/pool');
 const { authMiddleware, requireRole } = require('../middleware/auth');
 const { logAudit } = require('../utils/audit');
 const { resolveRegistrationForSession } = require('../utils/registrations');
+const { parsePositiveInt } = require('../utils/ids');
 
 const router = express.Router();
 
@@ -25,10 +26,21 @@ const router = express.Router();
  *   keepCheckinStatus boolean (default false) — preserve checked_in / attendance_status
  */
 router.patch('/move', authMiddleware, requireRole('admin', 'coordinator'), async (req, res) => {
-  const { playerId, fromSessionId, toSessionId, keepCheckinStatus = false } = req.body || {};
+  const {
+    playerId: rawPlayerId,
+    fromSessionId: rawFromSessionId,
+    toSessionId: rawToSessionId,
+    keepCheckinStatus = false,
+  } = req.body || {};
 
-  if (!playerId || !fromSessionId || !toSessionId) {
+  if (!rawPlayerId || !rawFromSessionId || !rawToSessionId) {
     return res.status(400).json({ error: 'playerId, fromSessionId, and toSessionId are required' });
+  }
+  const playerId = parsePositiveInt(rawPlayerId);
+  const fromSessionId = parsePositiveInt(rawFromSessionId);
+  const toSessionId = parsePositiveInt(rawToSessionId);
+  if (!playerId || !fromSessionId || !toSessionId) {
+    return res.status(400).json({ error: 'playerId, fromSessionId, and toSessionId must be positive integers' });
   }
   if (fromSessionId === toSessionId) {
     return res.status(400).json({ error: 'fromSessionId and toSessionId must be different' });

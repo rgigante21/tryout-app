@@ -2,6 +2,7 @@ const express = require('express');
 const pool    = require('../db/pool');
 const { authMiddleware, requireRole, requireAssignedSessionAccess } = require('../middleware/auth');
 const { resolveRegistrationForSession } = require('../utils/registrations');
+const { parsePositiveInt } = require('../utils/ids');
 
 const router = express.Router();
 
@@ -309,8 +310,12 @@ router.get('/:id/players', authMiddleware, requireAssignedSessionAccess(), async
 // PATCH /api/sessions/:id/players/:playerId/checkin
 router.patch('/:id/players/:playerId/checkin', authMiddleware, requireRole('admin', 'coordinator'), async (req, res) => {
   const { checkedIn = true, attendanceStatus } = req.body;
-  const sessionId  = parseInt(req.params.id);
-  const playerId   = parseInt(req.params.playerId);
+  const sessionId  = parsePositiveInt(req.params.id);
+  const playerId   = parsePositiveInt(req.params.playerId);
+
+  if (!sessionId || !playerId) {
+    return res.status(400).json({ error: 'Invalid session or player ID' });
+  }
 
   const validStatuses = [null, 'checked_in', 'late_arrival', 'no_show', 'excused'];
   if (attendanceStatus !== undefined && !validStatuses.includes(attendanceStatus)) {

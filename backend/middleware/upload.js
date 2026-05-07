@@ -14,13 +14,22 @@ const ALLOWED_MIMES = new Set([
   'application/octet-stream', // some OS/browsers mis-type CSV/XLSX
 ]);
 
+function isAllowedUpload(name, mime) {
+  const lower = (name || '').toLowerCase();
+  const isCsv = lower.endsWith('.csv');
+  const isXlsx = lower.endsWith('.xlsx');
+  if (!isCsv && !isXlsx) return false;
+
+  if (mime === 'application/octet-stream') return true;
+  if (isCsv) return mime === 'text/csv' || mime === 'application/vnd.ms-excel';
+  return mime === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+}
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
   fileFilter(_req, file, cb) {
-    const name = (file.originalname || '').toLowerCase();
-    const isCsvOrXlsx = name.endsWith('.csv') || name.endsWith('.xlsx');
-    if (ALLOWED_MIMES.has(file.mimetype) || isCsvOrXlsx) {
+    if (ALLOWED_MIMES.has(file.mimetype) && isAllowedUpload(file.originalname, file.mimetype)) {
       return cb(null, true);
     }
     cb(new Error('Only CSV and XLSX files are accepted'));
@@ -28,3 +37,4 @@ const upload = multer({
 });
 
 module.exports = upload;
+module.exports.isAllowedUpload = isAllowedUpload;

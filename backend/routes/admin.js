@@ -5,6 +5,7 @@ const { authMiddleware, requireRole } = require('../middleware/auth');
 const { assignPlayerToSessions } = require('../utils/session-assignment');
 const { logAudit } = require('../utils/audit');
 const { findOrCreatePlayer, upsertPlayerRegistration } = require('../utils/registrations');
+const { parsePositiveInt } = require('../utils/ids');
 
 const router     = express.Router();
 const guard      = [authMiddleware, requireRole('admin', 'coordinator')];
@@ -663,6 +664,9 @@ router.get('/users/:id/sessions', ...guard, async (req, res) => {
 // ── Session finalization ──────────────────────────────────────────────────────
 
 router.patch('/sessions/:id/finalize', authMiddleware, requireRole('admin', 'coordinator'), async (req, res) => {
+  const sessionId = parsePositiveInt(req.params.id);
+  if (!sessionId) return res.status(400).json({ error: 'Invalid session ID' });
+
   const { status } = req.body;
   const validTransitions = ['scoring_complete', 'finalized'];
 
@@ -676,12 +680,12 @@ router.patch('/sessions/:id/finalize', authMiddleware, requireRole('admin', 'coo
   try {
     const r = await pool.query(
       `UPDATE sessions SET status = $1 WHERE id = $2 AND organization_id = $3 RETURNING *`,
-      [status, req.params.id, req.org_id]
+      [status, sessionId, req.org_id]
     );
     if (!r.rows[0]) return res.status(404).json({ error: 'Session not found' });
 
     await logAudit('session_status_changed', req.user.id, {
-      sessionId: parseInt(req.params.id),
+      sessionId,
       newStatus: status,
     }, req.org_id);
 
@@ -695,7 +699,9 @@ router.patch('/sessions/:id/finalize', authMiddleware, requireRole('admin', 'coo
 // ── Scorer completion stats ───────────────────────────────────────────────────
 
 router.get('/sessions/:id/completion', ...guard, async (req, res) => {
-  const sessionId = parseInt(req.params.id);
+  const sessionId = parsePositiveInt(req.params.id);
+  if (!sessionId) return res.status(400).json({ error: 'Invalid session ID' });
+
   try {
     // Verify session belongs to this org
     const sessionCheck = await pool.query(
@@ -751,7 +757,7 @@ router.get('/org', ...guard, async (req, res) => {
   try {
     const { rows: [org] } = await pool.query(
       'SELECT accent_color, features FROM organizations WHERE id = $1',
-      [req.orgId]
+      [req.org_id]
     );
     res.json({ org: org || { accent_color: '#6B1E2E', features: {} } });
   } catch (err) {
@@ -778,7 +784,7 @@ router.patch('/org', ...adminGuard, async (req, res) => {
 
     if (!updates.length) return res.status(400).json({ error: 'Nothing to update' });
 
-    params.push(req.orgId);
+    params.push(req.org_id);
     const { rows: [org] } = await pool.query(
       `UPDATE organizations SET ${updates.join(', ')} WHERE id = $${params.length} RETURNING accent_color, features`,
       params
