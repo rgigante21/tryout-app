@@ -58,6 +58,27 @@ Tests live in `backend/tests/` and require a live Postgres DB. Jest maps `bcrypt
 cd backend && npm run audit-tenancy
 ```
 
+## Local Agent Tooling
+
+T3 and other GUI-launched agent tools may not inherit the same shell `PATH` as a login terminal. If T3 reports `Codex CLI (codex) is not installed or not executable`, set its Codex binary path explicitly to:
+
+```text
+/usr/local/bin/codex
+```
+
+Leave `CODEX_HOME` blank unless a separate Codex config directory is intentionally needed. If T3 requires it, use:
+
+```text
+/Users/macdaddy/.codex
+```
+
+If T3 still rejects the binary, verify and clear macOS quarantine metadata on the Homebrew cask target:
+
+```bash
+/usr/local/bin/codex --version
+xattr -d com.apple.quarantine /usr/local/Caskroom/codex/0.128.0/codex-x86_64-apple-darwin
+```
+
 ## Database Credentials
 
 The Docker Postgres service uses the values from `.env`. Local defaults are still expected to be `POSTGRES_USER=postgres`, `POSTGRES_DB=tryoutapp`, and the matching `POSTGRES_PASSWORD`. When connecting with `docker exec`, use `-U postgres -d tryoutapp`.

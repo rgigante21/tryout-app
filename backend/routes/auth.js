@@ -14,6 +14,7 @@ if (!process.env.JWT_SECRET) {
 const JWT_SECRET   = process.env.JWT_SECRET;
 const TOKEN_TTL_S  = 12 * 60 * 60; // 12 hours in seconds
 const isProd       = process.env.NODE_ENV === 'production';
+const LOGIN_CODE_RE = /^[a-z0-9-]{2,100}$/;
 
 /** Build cookie options for auth_token */
 function cookieOptions() {
@@ -26,48 +27,78 @@ function cookieOptions() {
   };
 }
 
+function normalizeLoginCode(value) {
+  if (!value || typeof value !== 'string') return null;
+  const loginCode = value.toLowerCase().trim();
+  return LOGIN_CODE_RE.test(loginCode) ? loginCode : null;
+}
+
+// ── GET /api/auth/orgs/lookup/:loginCode ─────────────────────────────────────
+// Public Organization Lookup. Returns only safe sign-in page metadata.
+router.get('/orgs/lookup/:loginCode', async (req, res) => {
+  const loginCode = normalizeLoginCode(req.params.loginCode);
+  if (!loginCode) {
+    return res.status(400).json({ error: 'Invalid organization login code' });
+  }
+
+  try {
+    const result = await pool.query(
+      `SELECT name, subdomain, accent_color
+         FROM organizations
+        WHERE subdomain = $1 AND archived_at IS NULL`,
+      [loginCode]
+    );
+    const org = result.rows[0];
+    if (!org) {
+      return res.status(404).json({ error: 'No organization found for that login code' });
+    }
+    return res.json({
+      organization: {
+        name: org.name,
+        loginCode: org.subdomain,
+        accent_color: org.accent_color || '#6B1E2E',
+      },
+    });
+  } catch (err) {
+    console.error('Organization lookup error:', err);
+    return res.status(500).json({ error: 'Organization lookup failed — please try again' });
+  }
+});
+
 // ── POST /api/auth/login ──────────────────────────────────────────────────────
-// Accepts { email, password, subdomain }.
-// subdomain is optional in Phase 0.1 (single org). In Phase 0.2+ it will be required.
+// Accepts { email, password, loginCode }.
+// Credentials are checked only inside the resolved Organization Login Context.
 router.post('/login', authLimiter, async (req, res) => {
-  const { email, password, subdomain } = req.body || {};
+  const { email, password } = req.body || {};
+  const loginCode = normalizeLoginCode(req.body?.loginCode);
 
   if (!email || typeof email !== 'string' || !password || typeof password !== 'string') {
     return res.status(400).json({ error: 'Email and password are required' });
+  }
+  if (!loginCode) {
+    return res.status(400).json({ error: 'Organization login code is required' });
   }
 
   const normalizedEmail = email.toLowerCase().trim();
 
   try {
-    let orgId = null;
-
-    if (subdomain && typeof subdomain === 'string') {
-      const orgRes = await pool.query(
-        'SELECT id FROM organizations WHERE subdomain = $1 AND archived_at IS NULL',
-        [subdomain.toLowerCase().trim()]
-      );
-      if (!orgRes.rows[0]) {
-        // Return the same generic error to avoid org enumeration
-        await logAudit('login_failure', null, { email: normalizedEmail, subdomain }, 1);
-        return res.status(401).json({ error: 'Invalid email or password' });
-      }
-      orgId = orgRes.rows[0].id;
+    const orgRes = await pool.query(
+      'SELECT id FROM organizations WHERE subdomain = $1 AND archived_at IS NULL',
+      [loginCode]
+    );
+    const org = orgRes.rows[0];
+    if (!org) {
+      await logAudit('login_failure', null, { email: normalizedEmail, loginCode }, null);
+      return res.status(401).json({ error: 'Invalid email or password' });
     }
 
-    // Phase 0.1: if no subdomain provided, look up user across orgs (single-org scenario).
-    // Phase 0.2 will require subdomain and remove this fallback.
-    const userQuery = orgId
-      ? `SELECT u.id, u.email, u.password, u.first_name, u.last_name, u.role, u.organization_id,
-               o.name AS org_name
-           FROM users u JOIN organizations o ON o.id = u.organization_id
-          WHERE u.email = $1 AND u.organization_id = $2`
-      : `SELECT u.id, u.email, u.password, u.first_name, u.last_name, u.role, u.organization_id,
-               o.name AS org_name
-           FROM users u JOIN organizations o ON o.id = u.organization_id
-          WHERE u.email = $1`;
-    const userParams = orgId ? [normalizedEmail, orgId] : [normalizedEmail];
-
-    const result = await pool.query(userQuery, userParams);
+    const result = await pool.query(
+      `SELECT u.id, u.email, u.password, u.first_name, u.last_name, u.role, u.organization_id,
+              o.name AS org_name
+         FROM users u JOIN organizations o ON o.id = u.organization_id
+        WHERE u.email = $1 AND u.organization_id = $2`,
+      [normalizedEmail, org.id]
+    );
     const user = result.rows[0];
 
     // Use a dummy compare when user not found to prevent timing attacks
@@ -82,10 +113,8 @@ router.post('/login', authLimiter, async (req, res) => {
       valid = false;
     }
 
-    const resolvedOrgId = user?.organization_id || orgId || 1;
-
     if (!user || !valid) {
-      await logAudit('login_failure', null, { email: normalizedEmail }, resolvedOrgId);
+      await logAudit('login_failure', null, { email: normalizedEmail, loginCode }, org.id);
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 

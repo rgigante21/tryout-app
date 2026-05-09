@@ -14,6 +14,7 @@ export default function App() {
         <ErrorBoundary>
           <Routes>
             <Route path="/login" element={<Login />} />
+            <Route path="/login/:loginCode" element={<Login />} />
 
           <Route path="/score" element={
             <ProtectedRoute roles={['scorer', 'coordinator', 'admin']}>

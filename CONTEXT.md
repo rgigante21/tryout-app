@@ -69,12 +69,70 @@ _Avoid_: Complete, Scoring Complete (old names — replaced)
 ## Relationships
 
 - An **Organization** owns many **Tryout Events**
+- An **Organization** owns many **Users**
+- An email address may have one **Organization Membership** per **Organization**
+- **Membership Creation** creates an **Organization Membership** inside exactly one **Organization**
+- **Membership Activation** follows **Membership Creation**
+- **Membership Recovery** applies to exactly one **Organization Membership**
+- An **Organization Lookup** resolves one **Organization Login Code** to one **Organization**
+- An **Organization Login Code Alias** resolves to the same **Organization** as its current **Organization Login Code**
+- An **Organization Lookup** leads to one **Organization Sign-In Page**
+- A **User** signs in through exactly one **Organization Login Context**
+- An **Organization-Scoped Session** is valid for exactly one **Organization**
+- A **Revocable Session** allows logout, password reset, or membership disablement to invalidate an **Organization-Scoped Session**
+- An **Isolated Organization Cookie** carries one **Organization-Scoped Session**
+- **State-Changing Request Protection** applies to authenticated Organization data changes
 - A **Tryout Event** has many **Age Groups**
 - A **U-level Age Group** derives its valid birth year range from `max_age` + the event's **Season Year**
 - A **Birth Year Age Group** stores its valid range explicitly as `birth_year_min` / `birth_year_max`
 - An **Import Preview** belongs to one **Tryout Event** and one **Age Group**
 
 ### Multi-Tenancy & Feature Flags
+
+**User**: A person who signs in to one Organization to administer, coordinate, or score Tryout Events.
+_Avoid_: Account
+
+**Organization Membership**: A User record inside one Organization, with its own role and credentials for that Organization.
+_Avoid_: Global identity
+
+**Membership Creation**: The controlled creation of an Organization Membership by an admin or approved Organization workflow.
+_Avoid_: Self-registration, public signup
+
+**Membership Activation**: The first-time password setup step that lets a newly created Organization Membership become usable for sign-in.
+_Avoid_: Admin-set permanent password
+
+**Membership Recovery**: The Organization-scoped password reset flow for an existing Organization Membership.
+_Avoid_: Global password reset
+
+**Organization Login Context**: The Organization boundary selected before credentials are checked; a User authenticates inside exactly one Organization context.
+_Avoid_: Tenant login, global login
+
+**Organization-Scoped Session**: A signed-in browser session that is valid only for the Organization Login Context recorded at authentication time.
+_Avoid_: Global session
+
+**Revocable Session**: An Organization-scoped session that can be invalidated server-side before its normal expiration.
+_Avoid_: Stateless-only logout
+
+**Isolated Organization Cookie**: An auth cookie scoped to one Organization host so a browser session for one Organization is not automatically sent to another Organization.
+_Avoid_: Shared tenant cookie
+
+**State-Changing Request Protection**: A CSRF defense for authenticated requests that create, update, or delete Organization data.
+_Avoid_: CORS-only protection
+
+**Organization Login Code**: A short, stable, unique code that a User enters to find their Organization before signing in.
+_Avoid_: Organization ID name, org name, tenant code
+
+**Organization Login Code Alias**: A previous Organization Login Code that temporarily redirects to the current Organization Login Context after a controlled rename.
+_Avoid_: Duplicate login code
+
+**Organization Lookup**: The pre-login step where a User enters an Organization Login Code to find the correct Organization-branded sign-in page.
+_Avoid_: Authentication, login
+
+**Organization Sign-In Page**: The Organization-branded page where a User enters credentials after an Organization Lookup has resolved the Organization Login Context.
+_Avoid_: Global login page
+
+**Generic Credential Login**: A sign-in form that checks email and password without first resolving an Organization Login Context. This is not part of the product model.
+_Avoid_: Login
 
 **Organization Features**: A JSONB `features` column on `organizations` controls which optional capabilities are enabled per org. Default is all flags off. Flags are added here rather than as individual boolean columns to avoid migrations per feature.
 
@@ -107,3 +165,6 @@ Known flags (planned):
 
 - "Mites - U8" was one field doing two jobs (display name + U-level). Resolved: `name` is freeform display; `max_age` is the machine-readable U-level number.
 - "Undo import" was discussed but rejected in favor of prevention at Import Preview time. There is no rollback on a committed import.
+- "organization id name" was used for the value entered before login. Resolved: call this the **Organization Login Code**; the **Organization** still has a separate display name.
+- Generic email/password login was discussed for the single-Organization phase. Resolved: credentials are only checked after an **Organization Login Context** is resolved.
+- `organizations.subdomain` currently backs the **Organization Login Code** in the database. Resolved: keep that field for now and expose the product/API language as login code.

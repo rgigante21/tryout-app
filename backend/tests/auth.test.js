@@ -4,8 +4,11 @@
  *
  * Covers:
  * - public registration is blocked
+ * - organization lookup resolves a login code
  * - login succeeds with valid credentials
+ * - login requires an organization login code
  * - login fails with bad credentials (normalized error, no user enumeration)
+ * - the same email can belong to different organizations
  * - auth cookie flags (HttpOnly, SameSite)
  * - logout clears the cookie
  * - /me rejects unauthenticated requests
@@ -42,6 +45,30 @@ describe('POST /api/auth/register', () => {
   });
 });
 
+// ── Organization Lookup ─────────────────────────────────────────────────────
+
+describe('GET /api/auth/orgs/lookup/:loginCode', () => {
+  it('returns safe organization sign-in metadata for a valid login code', async () => {
+    const res = await request(app)
+      .get(`/api/auth/orgs/lookup/${testOrg.subdomain}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.organization).toMatchObject({
+      name: testOrg.name,
+      loginCode: testOrg.subdomain,
+    });
+    expect(res.body.organization.id).toBeUndefined();
+  });
+
+  it('returns 404 for an unknown login code', async () => {
+    const res = await request(app)
+      .get('/api/auth/orgs/lookup/not-a-real-org-code');
+
+    expect(res.status).toBe(404);
+    expect(res.body.error).toMatch(/No organization found/i);
+  });
+});
+
 // ── Login ────────────────────────────────────────────────────────────────────
 
 describe('POST /api/auth/login', () => {
@@ -55,7 +82,7 @@ describe('POST /api/auth/login', () => {
   it('returns 200 and sets HttpOnly cookie on valid credentials', async () => {
     const res = await request(app)
       .post('/api/auth/login')
-      .send({ email: user.email, password: 'ValidPass99!' });
+      .send({ email: user.email, password: 'ValidPass99!', loginCode: testOrg.subdomain });
 
     expect(res.status).toBe(200);
     expect(res.body.user).toBeDefined();
@@ -72,7 +99,7 @@ describe('POST /api/auth/login', () => {
   it('returns 401 with wrong password', async () => {
     const res = await request(app)
       .post('/api/auth/login')
-      .send({ email: user.email, password: 'WrongPassword!' });
+      .send({ email: user.email, password: 'WrongPassword!', loginCode: testOrg.subdomain });
     expect(res.status).toBe(401);
     expect(res.body.error).toBeDefined();
     expect(res.body.error).not.toMatch(/user/i);
@@ -81,24 +108,68 @@ describe('POST /api/auth/login', () => {
   it('returns 401 for non-existent email (same error as bad password)', async () => {
     const res = await request(app)
       .post('/api/auth/login')
-      .send({ email: 'nobody@nowhere.test', password: 'Whatever123!' });
+      .send({ email: 'nobody@nowhere.test', password: 'Whatever123!', loginCode: testOrg.subdomain });
     expect(res.status).toBe(401);
   });
 
   it('returns 400 when email or password is missing', async () => {
-    const r1 = await request(app).post('/api/auth/login').send({ email: user.email });
-    const r2 = await request(app).post('/api/auth/login').send({ password: 'ValidPass99!' });
+    const r1 = await request(app).post('/api/auth/login').send({ email: user.email, loginCode: testOrg.subdomain });
+    const r2 = await request(app).post('/api/auth/login').send({ password: 'ValidPass99!', loginCode: testOrg.subdomain });
     expect(r1.status).toBe(400);
     expect(r2.status).toBe(400);
+  });
+
+  it('returns 400 when organization login code is missing', async () => {
+    const res = await request(app)
+      .post('/api/auth/login')
+      .send({ email: user.email, password: 'ValidPass99!' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/Organization login code is required/i);
   });
 
   it('does not expose the raw token in the response body', async () => {
     const res = await request(app)
       .post('/api/auth/login')
-      .send({ email: user.email, password: 'ValidPass99!' });
+      .send({ email: user.email, password: 'ValidPass99!', loginCode: testOrg.subdomain });
     expect(res.status).toBe(200);
     expect(res.body.token).toBeUndefined();
     expect(res.body.access_token).toBeUndefined();
+  });
+
+  it('scopes duplicate email addresses by organization login code', async () => {
+    const otherOrg = await createOrg({ name: 'Other Test Org' });
+    created.orgIds.push(otherOrg.id);
+
+    const email = `shared-${Date.now()}@test.local`;
+    const firstOrgUser = await createUser({
+      orgId: testOrg.id,
+      email,
+      password: 'FirstOrgPass99!',
+    });
+    const otherOrgUser = await createUser({
+      orgId: otherOrg.id,
+      email,
+      password: 'OtherOrgPass99!',
+    });
+    created.userIds.push(firstOrgUser.id, otherOrgUser.id);
+
+    const wrongOrgRes = await request(app)
+      .post('/api/auth/login')
+      .send({ email, password: 'FirstOrgPass99!', loginCode: otherOrg.subdomain });
+    expect(wrongOrgRes.status).toBe(401);
+
+    const firstOrgRes = await request(app)
+      .post('/api/auth/login')
+      .send({ email, password: 'FirstOrgPass99!', loginCode: testOrg.subdomain });
+    expect(firstOrgRes.status).toBe(200);
+    expect(firstOrgRes.body.user.organization_id).toBe(testOrg.id);
+
+    const otherOrgRes = await request(app)
+      .post('/api/auth/login')
+      .send({ email, password: 'OtherOrgPass99!', loginCode: otherOrg.subdomain });
+    expect(otherOrgRes.status).toBe(200);
+    expect(otherOrgRes.body.user.organization_id).toBe(otherOrg.id);
   });
 });
 
@@ -111,7 +182,7 @@ describe('POST /api/auth/logout', () => {
 
     const loginRes = await request(app)
       .post('/api/auth/login')
-      .send({ email: user.email, password: user.password });
+      .send({ email: user.email, password: user.password, loginCode: testOrg.subdomain });
     const cookie = loginRes.headers['set-cookie'];
 
     const logoutRes = await request(app)
