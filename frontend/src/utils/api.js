@@ -58,9 +58,10 @@ async function request(method, path, body, options = {}) {
 
 export const api = {
   // Auth
-  login:    (email, password) => request('POST', '/auth/login', { email, password }),
-  logout:   ()                => request('POST', '/auth/logout'),
-  me:       ()                => request('GET',  '/auth/me'),
+  lookupOrganization: (loginCode)      => request('GET',  `/auth/orgs/lookup/${encodeURIComponent(loginCode)}`),
+  login:              (email, password, loginCode) => request('POST', '/auth/login', { email, password, loginCode }),
+  logout:             ()               => request('POST', '/auth/logout'),
+  me:                 ()               => request('GET',  '/auth/me'),
 
   // Sessions
   mySessions: () => request('GET', '/sessions/mine').then(r => r.sessions || []),

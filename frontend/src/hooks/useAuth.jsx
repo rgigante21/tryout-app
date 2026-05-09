@@ -36,8 +36,8 @@ export function AuthProvider({ children }) {
     return () => window.removeEventListener('auth:expired', clearExpiredSession);
   }, []);
 
-  async function login(email, password) {
-    const data = await api.login(email, password);
+  async function login(email, password, loginCode) {
+    const data = await api.login(email, password, loginCode);
     // Server sets the HttpOnly cookie; we just store user profile in memory.
     // Normalise org_name → orgName so both sources (login + /me) have the same shape.
     const u = data.user;

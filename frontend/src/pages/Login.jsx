@@ -1,22 +1,69 @@
-import { useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
+import { api } from '../utils/api';
 
 export default function Login() {
   const { login } = useAuth();
   const navigate   = useNavigate();
   const location   = useLocation();
+  const { loginCode } = useParams();
+  const [organization, setOrganization] = useState(null);
+  const [lookupCode, setLookupCode] = useState('');
   const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
   const [error, setError]       = useState('');
   const [loading, setLoading]   = useState(false);
+  const [checkingOrg, setCheckingOrg] = useState(Boolean(loginCode));
+
+  useEffect(() => {
+    if (!loginCode) {
+      setOrganization(null);
+      setCheckingOrg(false);
+      return;
+    }
+
+    let active = true;
+    setError('');
+    setOrganization(null);
+    setCheckingOrg(true);
+    api.lookupOrganization(loginCode)
+      .then(data => {
+        if (active) setOrganization(data.organization);
+      })
+      .catch(err => {
+        if (active) {
+          setOrganization(null);
+          setError(err.message || 'No organization found for that login code');
+        }
+      })
+      .finally(() => {
+        if (active) setCheckingOrg(false);
+      });
+
+    return () => { active = false; };
+  }, [loginCode]);
+
+  function handleLookupSubmit(e) {
+    e.preventDefault();
+    const normalized = lookupCode.toLowerCase().trim();
+    if (!normalized) {
+      setError('Organization login code is required');
+      return;
+    }
+    navigate(`/login/${encodeURIComponent(normalized)}`);
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
+    if (!loginCode) {
+      setError('Organization login code is required');
+      return;
+    }
     setLoading(true);
     try {
-      const user = await login(email, password);
+      const user = await login(email, password, loginCode);
       const storedRedirect = window.sessionStorage.getItem('postLoginRedirect');
       window.sessionStorage.removeItem('postLoginRedirect');
       const intended = location.state?.from
@@ -38,6 +85,9 @@ export default function Login() {
     }
   }
 
+  const isLookup = !loginCode;
+  const orgName = organization?.name || 'TryoutOPS';
+
   return (
     <div style={s.page}>
       {/* Maroon header band */}
@@ -46,47 +96,88 @@ export default function Login() {
       <div style={s.card}>
         {/* Logo */}
         <div style={s.logoWrap}>
-          <img src="/wyh-logo.jpeg" alt="Weymouth Youth Hockey" style={s.logo} />
+          <img src="/wyh-logo.jpeg" alt={orgName} style={s.logo} />
         </div>
 
-        <h1 style={s.title}>Weymouth Youth Hockey</h1>
-        <p style={s.subtitle}>Tryout Management Portal</p>
+        <h1 style={s.title}>{isLookup ? 'Find Your Organization' : orgName}</h1>
+        <p style={s.subtitle}>{isLookup ? 'Enter your organization login code' : 'Tryout Management Portal'}</p>
         <div style={s.divider} />
 
-        <form onSubmit={handleSubmit}>
-          <div style={s.field}>
-            <label style={s.label}>Email</label>
-            <input
-              type="email"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              placeholder="you@example.com"
-              required
-              autoFocus
-            />
-          </div>
+        {isLookup ? (
+          <form onSubmit={handleLookupSubmit}>
+            <div style={s.field}>
+              <label style={s.label}>Organization Login Code</label>
+              <input
+                type="text"
+                value={lookupCode}
+                onChange={e => setLookupCode(e.target.value)}
+                placeholder="weymouth"
+                required
+                autoFocus
+                autoCapitalize="none"
+                autoCorrect="off"
+              />
+            </div>
 
-          <div style={s.field}>
-            <label style={s.label}>Password</label>
-            <input
-              type="password"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              placeholder="••••••••"
-              required
-            />
-          </div>
+            {error && (
+              <div style={s.errorBox}>{error}</div>
+            )}
 
-          {error && (
-            <div style={s.errorBox}>{error}</div>
-          )}
+            <button type="submit" style={s.btn}>
+              Continue
+            </button>
+          </form>
+        ) : (
+          <>
+            {checkingOrg ? (
+              <div style={s.loadingBox}>Loading...</div>
+            ) : !organization ? (
+              <div>
+                {error && (
+                  <div style={s.errorBox}>{error}</div>
+                )}
+                <button type="button" onClick={() => navigate('/login')} style={s.btn}>
+                  Try Another Code
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleSubmit}>
+                <div style={s.field}>
+                  <label style={s.label}>Email</label>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={e => setEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    required
+                    autoFocus
+                  />
+                </div>
 
-          <button type="submit" disabled={loading} style={{ ...s.btn, opacity: loading ? 0.75 : 1 }}>
-            {loading ? 'Signing in…' : 'Sign In'}
-          </button>
-        </form>
+                <div style={s.field}>
+                  <label style={s.label}>Password</label>
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    required
+                  />
+                </div>
 
-        <p style={s.footer}>Weymouth, MA · Youth Hockey</p>
+                {error && (
+                  <div style={s.errorBox}>{error}</div>
+                )}
+
+                <button type="submit" disabled={loading} style={{ ...s.btn, opacity: loading ? 0.75 : 1 }}>
+                  {loading ? 'Signing in...' : 'Sign In'}
+                </button>
+              </form>
+            )}
+          </>
+        )}
+
+        <p style={s.footer}>{isLookup ? 'TryoutOPS' : organization?.loginCode}</p>
       </div>
     </div>
   );
@@ -175,6 +266,12 @@ const s = {
     padding: '10px 14px',
     fontSize: 13,
     marginBottom: 16,
+  },
+  loadingBox: {
+    color: 'var(--text2)',
+    fontSize: 14,
+    textAlign: 'center',
+    padding: '16px 0',
   },
   btn: {
     width: '100%',
