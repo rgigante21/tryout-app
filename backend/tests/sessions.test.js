@@ -205,9 +205,32 @@ describe('PATCH /api/session-players/move', () => {
 
     expect(res.status).toBe(400);
   });
+
+  it('returns 400 for invalid IDs', async () => {
+    const res = await request(app)
+      .patch('/api/session-players/move')
+      .set('Cookie', adminUser.cookie)
+      .send({
+        playerId:       'banana',
+        fromSessionId:  fixture.session.id,
+        toSessionId:    siblingSession.id,
+        keepCheckinStatus: false,
+      });
+
+    expect(res.status).toBe(400);
+  });
 });
 
 describe('PATCH /api/admin/sessions/:id/finalize', () => {
+  it('returns 400 for an invalid session ID', async () => {
+    const res = await request(app)
+      .patch('/api/admin/sessions/not-a-number/finalize')
+      .set('Cookie', adminUser.cookie)
+      .send({ status: 'scoring_complete' });
+
+    expect(res.status).toBe(400);
+  });
+
   it('coordinator can mark scoring complete', async () => {
     const res = await request(app)
       .patch(`/api/admin/sessions/${fixture.session.id}/finalize`)
@@ -236,6 +259,87 @@ describe('PATCH /api/admin/sessions/:id/finalize', () => {
     expect(res.status).toBe(200);
     expect(res.body.session.status).toBe('finalized');
     await pool.query(`UPDATE sessions SET status = 'active' WHERE id = $1`, [fixture.session.id]);
+  });
+});
+
+describe('GET /api/admin/sessions/:id/completion', () => {
+  it('returns 400 for an invalid session ID', async () => {
+    const res = await request(app)
+      .get('/api/admin/sessions/nope/completion')
+      .set('Cookie', adminUser.cookie);
+
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('PATCH /api/sessions/:id/players/:playerId/checkin', () => {
+  it('returns 400 for invalid IDs', async () => {
+    const res = await request(app)
+      .patch(`/api/sessions/${fixture.session.id}/players/bad/checkin`)
+      .set('Cookie', adminUser.cookie)
+      .send({ checkedIn: true });
+
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('GET/PATCH /api/admin/org', () => {
+  it('loads and updates the authenticated organization settings', async () => {
+    const getRes = await request(app)
+      .get('/api/admin/org')
+      .set('Cookie', adminUser.cookie);
+
+    expect(getRes.status).toBe(200);
+    expect(getRes.body.org).toBeDefined();
+
+    const patchRes = await request(app)
+      .patch('/api/admin/org')
+      .set('Cookie', adminUser.cookie)
+      .send({ accentColor: '#123456' });
+
+    expect(patchRes.status).toBe(200);
+    expect(patchRes.body.org.accent_color).toBe('#123456');
+  });
+});
+
+describe('POST /api/events/:eventId/import/:batchId/commit', () => {
+  it('includes skipped rows in the commit summary', async () => {
+    const batchRes = await pool.query(
+      `INSERT INTO import_batches (event_id, import_type, status, file_name, row_count, created_by)
+       VALUES ($1, 'evaluators', 'preview', 'evaluators.csv', 2, $2)
+       RETURNING id`,
+      [fixture.event.id, adminUser.id]
+    );
+    const batchId = batchRes.rows[0].id;
+
+    await pool.query(
+      `INSERT INTO import_batch_rows (batch_id, row_index, raw_data, mapped_data, status)
+       VALUES
+         ($1, 0, '{}'::jsonb, $2::jsonb, 'update'),
+         ($1, 1, '{}'::jsonb, '{}'::jsonb, 'skipped')`,
+      [
+        batchId,
+        JSON.stringify({
+          existingUserId: assignedScorer.id,
+          existingRole: 'scorer',
+          firstName: 'Updated',
+          lastName: 'Evaluator',
+          role: 'scorer',
+          sessionIds: [],
+        }),
+      ]
+    );
+
+    const res = await request(app)
+      .post(`/api/events/${fixture.event.id}/import/${batchId}/commit`)
+      .set('Cookie', adminUser.cookie);
+
+    expect(res.status).toBe(200);
+    expect(res.body.summary).toEqual(expect.objectContaining({
+      updated: 1,
+      skipped: 1,
+      errors: 0,
+    }));
   });
 });
 

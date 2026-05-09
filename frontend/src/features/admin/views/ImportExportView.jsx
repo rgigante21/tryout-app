@@ -221,7 +221,7 @@ function ResultBanner({ result, onReset }) {
           Import complete
         </div>
         <div style={{ fontSize: 13, color: 'var(--text2)' }}>
-          {result.added} added · {result.updated} updated · {result.errors} errors
+          {result.added} added · {result.updated} updated · {result.skipped || 0} skipped · {result.errors} errors
         </div>
       </div>
       <button onClick={onReset} style={{ ...A.ghostBtn, fontSize: 12 }}>

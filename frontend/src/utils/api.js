@@ -1,4 +1,11 @@
 const BASE = '/api';
+const DEFAULT_TIMEOUT_MS = 30_000;
+
+function emitAuthExpired() {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('auth:expired'));
+  }
+}
 
 /**
  * Core fetch wrapper.
@@ -6,12 +13,24 @@ const BASE = '/api';
  * No Authorization header — token lives in a cookie managed by the server.
  */
 async function request(method, path, body, options = {}) {
+  const controller = options.signal ? null : new AbortController();
+  const timeoutId = controller
+    ? globalThis.setTimeout(() => controller.abort(), options.timeoutMs || DEFAULT_TIMEOUT_MS)
+    : null;
+
   const res = await fetch(`${BASE}${path}`, {
     method,
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
-    signal: options.signal,
+    signal: options.signal || controller.signal,
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+  }).catch((err) => {
+    if (err.name === 'AbortError') {
+      throw new Error('Request timed out — please try again');
+    }
+    throw err;
+  }).finally(() => {
+    if (timeoutId) globalThis.clearTimeout(timeoutId);
   });
 
   let data;
@@ -30,6 +49,7 @@ async function request(method, path, body, options = {}) {
       if (window.location.pathname !== '/login') {
         window.sessionStorage.setItem('postLoginRedirect', here);
       }
+      emitAuthExpired();
     }
     throw err;
   }

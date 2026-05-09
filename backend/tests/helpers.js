@@ -36,6 +36,18 @@ const pool = new Pool({
   password: process.env.DB_PASS,
 });
 
+let schemaReady = false;
+
+async function ensureTestSchema() {
+  if (schemaReady) return;
+  await pool.query(`
+    ALTER TABLE organizations
+      ADD COLUMN IF NOT EXISTS accent_color VARCHAR(7) DEFAULT '#6B1E2E',
+      ADD COLUMN IF NOT EXISTS features JSONB NOT NULL DEFAULT '{}'
+  `);
+  schemaReady = true;
+}
+
 /**
  * Build the Express app without calling app.listen().
  * Imported lazily so env is patched before any module-level pool connections.
@@ -59,6 +71,7 @@ function buildApp() {
   app.use('/api/session-players', authMiddleware, orgMiddleware, require('../routes/session-players'));
   app.use('/api/scores',          authMiddleware, orgMiddleware, require('../routes/scores'));
   app.use('/api/admin',           authMiddleware, orgMiddleware, require('../routes/admin'));
+  app.use('/api/events',          authMiddleware, orgMiddleware, require('../routes/import'));
   app.use('/api/events',          authMiddleware, orgMiddleware, require('../routes/export'));
 
   app.get('/health', (_req, res) => res.json({ status: 'ok' }));
@@ -74,6 +87,7 @@ function buildApp() {
  * Create a test organization. Returns the org row.
  */
 async function createOrg({ name, subdomain } = {}) {
+  await ensureTestSchema();
   const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   subdomain = subdomain || `test-${suffix}`;
   name = name || `Test Org ${suffix}`;

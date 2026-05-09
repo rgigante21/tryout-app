@@ -99,6 +99,15 @@ describe('POST /api/scores (assigned scorer)', () => {
       .send(incomplete);
     expect(res.status).toBe(400);
   });
+
+  it('rejects invalid session or player IDs', async () => {
+    const res = await request(app)
+      .post('/api/scores')
+      .set('Cookie', assignedScorer.cookie)
+      .send({ ...validScore(), sessionId: 'banana' });
+
+    expect(res.status).toBe(400);
+  });
 });
 
 // ── Unassigned scorer ────────────────────────────────────────────────────────

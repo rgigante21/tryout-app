@@ -21,6 +21,7 @@ const { parseUpload } = require('../utils/parse-upload');
 const { assignPlayerToSessions } = require('../utils/session-assignment');
 const { findOrCreatePlayer, upsertPlayerRegistration } = require('../utils/registrations');
 const { logAudit } = require('../utils/audit');
+const { parsePositiveInt } = require('../utils/ids');
 
 const router = express.Router({ mergeParams: true });
 const guard      = [authMiddleware, requireRole('admin', 'coordinator')];
@@ -631,12 +632,15 @@ router.get('/:eventId/import/assignments-template', ...guard, (_req, res) => {
 // ─────────────────────────────────────────
 
 router.post('/:eventId/import/upload', ...adminGuard, upload.single('file'), async (req, res) => {
-  const { eventId } = req.params;
+  const eventId = parsePositiveInt(req.params.eventId);
   const importType  = (req.body.importType || 'players').trim();
-  const ageGroupId  = req.body.ageGroupId ? parseInt(req.body.ageGroupId) : null;
+  const ageGroupId  = req.body.ageGroupId ? parsePositiveInt(req.body.ageGroupId) : null;
 
   if (!req.file) {
     return res.status(400).json({ error: 'No file uploaded — use field name "file"' });
+  }
+  if (!eventId) {
+    return res.status(400).json({ error: 'Invalid event ID' });
   }
   if (!['players', 'evaluators', 'session_assignments'].includes(importType)) {
     return res.status(400).json({ error: 'Invalid importType — must be players, evaluators, or session_assignments' });
@@ -776,7 +780,12 @@ router.get('/:eventId/import/:batchId/preview', ...guard, async (req, res) => {
 // ─────────────────────────────────────────
 
 router.post('/:eventId/import/:batchId/commit', ...adminGuard, async (req, res) => {
-  const { eventId, batchId } = req.params;
+  const eventId = parsePositiveInt(req.params.eventId);
+  const batchId = parsePositiveInt(req.params.batchId);
+
+  if (!eventId || !batchId) {
+    return res.status(400).json({ error: 'Invalid event or batch ID' });
+  }
 
   const event = await validateEvent(eventId, req.org_id);
   if (!event) return res.status(404).json({ error: 'Event not found' });
@@ -801,6 +810,14 @@ router.post('/:eventId/import/:batchId/commit', ...adminGuard, async (req, res) 
   if (!batchRows.length) {
     return res.status(400).json({ error: 'No valid rows to commit' });
   }
+
+  const { rows: skippedRows } = await pool.query(
+    `SELECT COUNT(*)::int AS skipped
+     FROM import_batch_rows
+     WHERE batch_id = $1 AND status = 'skipped'`,
+    [batchId]
+  );
+  const skipped = skippedRows[0]?.skipped || 0;
 
   let added = 0, updated = 0, errors = 0;
   const client = await pool.connect();
@@ -925,7 +942,7 @@ router.post('/:eventId/import/:batchId/commit', ...adminGuard, async (req, res) 
     await client.query('COMMIT');
 
     res.json({
-      summary: { added, updated, errors },
+      summary: { added, updated, skipped, errors },
       batchId,
     });
   } catch (err) {

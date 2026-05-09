@@ -3,6 +3,7 @@ const pool    = require('../db/pool');
 const { authMiddleware, requireRole } = require('../middleware/auth');
 const { logAudit } = require('../utils/audit');
 const { resolveRegistrationForSession } = require('../utils/registrations');
+const { parsePositiveInt } = require('../utils/ids');
 
 const router = express.Router();
 
@@ -59,10 +60,15 @@ async function checkAutoAdvanceScoresIn(sessionId, orgId) {
 // POST /api/scores — submit or update a score
 // Security: scorer must be assigned to the session; player must belong to that session.
 router.post('/', authMiddleware, async (req, res) => {
-  const { sessionId, playerId, skating, puckSkills, hockeySense, notes } = req.body;
+  const { sessionId: rawSessionId, playerId: rawPlayerId, skating, puckSkills, hockeySense, notes } = req.body;
 
-  if (!sessionId || !playerId || !skating || !puckSkills || !hockeySense) {
+  if (!rawSessionId || !rawPlayerId || !skating || !puckSkills || !hockeySense) {
     return res.status(400).json({ error: 'sessionId, playerId, skating, puckSkills, and hockeySense are required' });
+  }
+  const sessionId = parsePositiveInt(rawSessionId);
+  const playerId = parsePositiveInt(rawPlayerId);
+  if (!sessionId || !playerId) {
+    return res.status(400).json({ error: 'sessionId and playerId must be positive integers' });
   }
 
   const isAdmin = req.user.role === 'admin' || req.user.role === 'coordinator';
