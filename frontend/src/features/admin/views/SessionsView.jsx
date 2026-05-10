@@ -536,6 +536,7 @@ export default function SessionsView({
   assigningTo, setAssigningTo, assignUserId, setAssignUserId,
   assignScorer, unassignScorer, onChangeAssignment,
   user,
+  planningContext,
 }) {
   // Group sessions by date for the planning view
   const sessionsByDate = {};
