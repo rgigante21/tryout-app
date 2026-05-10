@@ -8,6 +8,24 @@
  *   2. A player is added (assign to matching sessions in their age_group/event)
  */
 
+function normalizeLastNameKey(value) {
+  return String(value || '')
+    .trim()
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Z0-9]/g, '');
+}
+
+function lastNameInRange(lastName, start, end) {
+  const key = normalizeLastNameKey(lastName);
+  if (!key) return false;
+  const startKey = normalizeLastNameKey(start) || 'A';
+  const rawEndKey = normalizeLastNameKey(end) || 'Z';
+  const endKey = rawEndKey.length === 1 ? `${rawEndKey}ZZZZZZZZ` : rawEndKey;
+  return key >= startKey && key <= endKey;
+}
+
 /**
  * Assign all eligible players to sessions within a block.
  * Uses the block's split_method to determine which players
@@ -81,12 +99,11 @@ async function assignPlayersToBlock(client, blockId) {
 
     switch (block.split_method) {
       case 'last_name': {
-        const start = (session.last_name_start || 'A').toUpperCase();
-        const end   = (session.last_name_end   || 'Z').toUpperCase();
-        eligible = players.filter(p => {
-          const initial = p.last_name.charAt(0).toUpperCase();
-          return initial >= start && initial <= end;
-        });
+        eligible = players.filter(p => lastNameInRange(
+          p.last_name,
+          session.last_name_start,
+          session.last_name_end
+        ));
         break;
       }
       case 'jersey_range': {
@@ -157,16 +174,12 @@ async function assignPlayerToSessions(client, playerId, ageGroupId, eventId) {
   );
 
   let assigned = 0;
-  const initial = player.last_name.charAt(0).toUpperCase();
-
   for (const row of blockRes.rows) {
     let matches = false;
 
     switch (row.split_method) {
       case 'last_name': {
-        const start = (row.last_name_start || 'A').toUpperCase();
-        const end   = (row.last_name_end   || 'Z').toUpperCase();
-        matches = initial >= start && initial <= end;
+        matches = lastNameInRange(player.last_name, row.last_name_start, row.last_name_end);
         break;
       }
       case 'jersey_range': {
@@ -199,4 +212,9 @@ async function assignPlayerToSessions(client, playerId, ageGroupId, eventId) {
   return { assigned };
 }
 
-module.exports = { assignPlayersToBlock, assignPlayerToSessions };
+module.exports = {
+  assignPlayersToBlock,
+  assignPlayerToSessions,
+  lastNameInRange,
+  normalizeLastNameKey,
+};

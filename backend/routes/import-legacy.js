@@ -13,7 +13,7 @@
 const express = require('express');
 const pool    = require('../db/pool');
 const { authMiddleware, requireRole } = require('../middleware/auth');
-const { assignPlayerToSessions } = require('../utils/session-assignment');
+const { assignPlayerToSessions, lastNameInRange } = require('../utils/session-assignment');
 const { findOrCreatePlayer, upsertPlayerRegistration } = require('../utils/registrations');
 
 const router = express.Router();
@@ -176,10 +176,9 @@ router.post('/preview', ...guard, async (req, res) => {
       if (result.jerseyNumber && existingJerseys.has(result.jerseyNumber)) result.warnings.push(`Jersey #${result.jerseyNumber} already exists in this group`);
       if (result.externalId && existingExternalIds.has(result.externalId)) { result.warnings.push(`external_id ${result.externalId} already exists — will update existing player`); result.status = 'update'; }
       if (result.errors.length === 0 && result.lastName && sessions.length > 0) {
-        const initial = result.lastName.charAt(0).toUpperCase();
         for (const session of sessions) {
           let matches = false;
-          if (session.split_method === 'last_name') { const start = (session.last_name_start||'A').toUpperCase(); const end = (session.last_name_end||'Z').toUpperCase(); matches = initial >= start && initial <= end; }
+          if (session.split_method === 'last_name') { matches = lastNameInRange(result.lastName, session.last_name_start, session.last_name_end); }
           else if (session.split_method === 'jersey_range' && result.jerseyNumber) { matches = result.jerseyNumber >= (session.jersey_min ?? 0) && result.jerseyNumber <= (session.jersey_max ?? 99999); }
           else if (session.split_method === 'none') { matches = true; }
           if (matches) { result.assignedSession = { id: session.session_id, name: session.session_name, startTime: session.start_time }; break; }

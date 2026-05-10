@@ -34,6 +34,7 @@ function SessionTile({
   assigningTo, setAssigningTo, assignUserId, setAssignUserId,
   assignScorer, unassignScorer, onChangeAssignment,
   user,
+  planningContext,
 }) {
   const [expanded, setExpanded] = useState(false);
   const [draft, setDraft] = useState(null);
@@ -564,6 +565,7 @@ export default function SessionsView({
           ageGroups={ageGroups}
           wizardAgeGroupId={wizardAgeGroupId}
           setWizardAgeGroupId={setWizardAgeGroupId}
+          planningContext={planningContext}
         />
       )}
 

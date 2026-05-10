@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { A, SB } from './styles';
+import { api } from '../../utils/api';
 
 export const fmt = {
   date: (d) => {
@@ -51,6 +52,7 @@ export function defaultBlock() {
     blockType: 'skills',
     splitMethod: 'last_name',
     scoringMode: 'full',
+    slotMinutes: 30,
     playerAssignment: 'random',
     slots: [{ time: '', lastNameStart: 'A', lastNameEnd: 'Z', jerseyMin: '', jerseyMax: '' }],
     teams: [
@@ -489,8 +491,76 @@ export function BlockWizardPanel({
   ageGroups,
   wizardAgeGroupId,
   setWizardAgeGroupId,
+  planningContext,
 }) {
   const bw = blockWizard;
+  const [planningPreview, setPlanningPreview] = useState(null);
+  const [planningLoading, setPlanningLoading] = useState(false);
+  const [planningError, setPlanningError] = useState('');
+  const previewEventId = planningContext?.eventId;
+  const previewAgeGroupId = planningContext?.ageGroupId || wizardAgeGroupId;
+  const slotCount = bw.blockType === 'skills' ? bw.slots.length : bw.games.length;
+
+  useEffect(() => {
+    if (!previewEventId || !previewAgeGroupId || bw.blockType !== 'skills') {
+      setPlanningPreview(null);
+      setPlanningError('');
+      return;
+    }
+
+    let cancelled = false;
+    setPlanningLoading(true);
+    setPlanningError('');
+    api.sessionPlanningPreview({
+      eventId: previewEventId,
+      ageGroupId: previewAgeGroupId,
+      slots: slotCount,
+      slotMinutes: bw.slotMinutes || 30,
+    })
+      .then((preview) => {
+        if (!cancelled) setPlanningPreview(preview);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setPlanningPreview(null);
+          setPlanningError(err.message || 'Unable to load planning preview');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setPlanningLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [previewEventId, previewAgeGroupId, bw.blockType, bw.slotMinutes, slotCount]);
+
+  useEffect(() => {
+    const splits = planningPreview?.balancedSplits || [];
+    if (bw.blockType !== 'skills' || bw.splitMethod !== 'last_name' || splits.length === 0) return;
+
+    setBlockWizard((current) => {
+      const changed = current.slots.some((slot, index) => {
+        const split = splits[index];
+        if (!split) return false;
+        return slot.lastNameStart !== split.lastNameStart || slot.lastNameEnd !== split.lastNameEnd || slot.estimatedCount !== split.count;
+      });
+      if (!changed) return current;
+      return {
+        ...current,
+        slots: current.slots.map((slot, index) => {
+          const split = splits[index];
+          if (!split) return slot;
+          return {
+            ...slot,
+            lastNameStart: split.lastNameStart,
+            lastNameEnd: split.lastNameEnd,
+            estimatedCount: split.count,
+          };
+        }),
+      };
+    });
+  }, [planningPreview, bw.blockType, bw.splitMethod, setBlockWizard]);
+
+  const selectedDateGap = planningPreview?.planningGaps?.find((gap) => gap.date === bw.date);
 
   return (
     <div style={{ ...A.card, borderColor: 'var(--blue)', borderWidth: 2, marginBottom: 16 }}>
@@ -516,6 +586,16 @@ export function BlockWizardPanel({
         <div style={{ flex: 1 }}>
           <label style={A.fieldLabel}>Date <span style={{ color: 'var(--red-txt)' }}>*</span></label>
           <input type="date" value={bw.date} onChange={(e) => setBlockWizard((w) => ({ ...w, date: e.target.value }))} />
+        </div>
+        <div style={{ width: 130 }}>
+          <label style={A.fieldLabel}>Slot length</label>
+          <select value={bw.slotMinutes || 30} onChange={(e) => setBlockWizard((w) => ({ ...w, slotMinutes: parseInt(e.target.value, 10) }))} style={A.selectInput}>
+            <option value={30}>30 min</option>
+            <option value={45}>45 min</option>
+            <option value={60}>60 min</option>
+            <option value={75}>75 min</option>
+            <option value={90}>90 min</option>
+          </select>
         </div>
       </div>
 
@@ -580,27 +660,36 @@ export function BlockWizardPanel({
 
           <div style={{ marginTop: 16 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <div style={A.fieldLabel}>Time slots</div>
+              <div>
+                <div style={A.fieldLabel}>Time slots</div>
+                {planningPreview && (
+                  <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 2 }}>
+                    {planningPreview.totalPlayers} tryout participants · target {planningPreview.targetPerSlot || 0} per slot
+                  </div>
+                )}
+              </div>
               {bw.splitMethod !== 'none' && (
                 <button onClick={addSlot} style={{ ...A.ghostBtn, fontSize: 11 }}>+ Add slot</button>
               )}
             </div>
+            {planningLoading && <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 8 }}>Calculating balanced split…</div>}
+            {planningError && <div style={{ ...A.errorBox, marginBottom: 8 }}>{planningError}</div>}
             {bw.slots.map((slot, i) => (
-              <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-end', marginBottom: 8 }}>
+              <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-end', marginBottom: 8, flexWrap: 'wrap' }}>
                 <div style={{ width: 110 }}>
                   {i === 0 && <label style={A.fieldLabel}>Start time</label>}
                   <input type="time" value={slot.time} onChange={(e) => updateSlot(i, 'time', e.target.value)} />
                 </div>
                 {bw.splitMethod === 'last_name' && (
                   <>
-                    <div style={{ width: 70 }}>
+                    <div style={{ width: 120 }}>
                       {i === 0 && <label style={A.fieldLabel}>From</label>}
-                      <input maxLength={3} value={slot.lastNameStart} onChange={(e) => updateSlot(i, 'lastNameStart', e.target.value.toUpperCase())} style={{ textAlign: 'center', fontWeight: 700 }} />
+                      <input value={slot.lastNameStart} onChange={(e) => updateSlot(i, 'lastNameStart', e.target.value.toUpperCase())} style={{ textAlign: 'center', fontWeight: 700 }} />
                     </div>
                     <span style={{ paddingBottom: 8, color: 'var(--text3)' }}>—</span>
-                    <div style={{ width: 70 }}>
+                    <div style={{ width: 120 }}>
                       {i === 0 && <label style={A.fieldLabel}>To</label>}
-                      <input maxLength={3} value={slot.lastNameEnd} onChange={(e) => updateSlot(i, 'lastNameEnd', e.target.value.toUpperCase())} style={{ textAlign: 'center', fontWeight: 700 }} />
+                      <input value={slot.lastNameEnd} onChange={(e) => updateSlot(i, 'lastNameEnd', e.target.value.toUpperCase())} style={{ textAlign: 'center', fontWeight: 700 }} />
                     </div>
                   </>
                 )}
@@ -620,8 +709,65 @@ export function BlockWizardPanel({
                 {bw.slots.length > 1 && (
                   <button onClick={() => removeSlot(i)} style={{ ...A.iconBtn, color: 'var(--red-txt)', paddingBottom: 8 }}>×</button>
                 )}
+                {bw.splitMethod === 'last_name' && (
+                  <div style={{
+                    minWidth: 76,
+                    padding: '7px 10px',
+                    borderRadius: 8,
+                    border: '1px solid var(--border)',
+                    background: '#fff',
+                    color: 'var(--text)',
+                    fontSize: 12,
+                    fontWeight: 800,
+                    textAlign: 'center',
+                  }}>
+                    {slot.estimatedCount ?? planningPreview?.balancedSplits?.[i]?.count ?? 0} kids
+                  </div>
+                )}
               </div>
             ))}
+            {planningPreview?.planningGaps?.length > 0 && (
+              <div style={{ marginTop: 12, padding: 12, border: '1px solid var(--border)', borderRadius: 8, background: '#fff' }}>
+                <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--maroon)', marginBottom: 8 }}>
+                  Planning gaps
+                </div>
+                {selectedDateGap ? (
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                    <span style={{ fontSize: 12, color: 'var(--text2)' }}>
+                      {fmt.dateMed(selectedDateGap.date)} has {selectedDateGap.sessionCount} sessions.
+                    </span>
+                    {selectedDateGap.openStarts.length > 0 ? selectedDateGap.openStarts.map((time) => (
+                      <button
+                        key={time}
+                        type="button"
+                        onClick={() => {
+                          const emptyIndex = bw.slots.findIndex((slot) => !slot.time);
+                          updateSlot(emptyIndex >= 0 ? emptyIndex : 0, 'time', time);
+                        }}
+                        style={{ ...A.ghostBtn, fontSize: 11, padding: '5px 8px' }}
+                      >
+                        Open {fmt.time(time)}
+                      </button>
+                    )) : (
+                      <span style={{ fontSize: 12, color: 'var(--text3)' }}>No immediate open starts found.</span>
+                    )}
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {planningPreview.planningGaps.slice(0, 4).map((gap) => (
+                      <button
+                        key={gap.date}
+                        type="button"
+                        onClick={() => setBlockWizard((w) => ({ ...w, date: gap.date }))}
+                        style={{ ...A.ghostBtn, fontSize: 11, padding: '5px 8px' }}
+                      >
+                        {fmt.dateMed(gap.date)} · {gap.sessionCount} sessions
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </>
       )}

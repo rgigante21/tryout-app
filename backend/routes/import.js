@@ -18,7 +18,7 @@ const pool    = require('../db/pool');
 const upload  = require('../middleware/upload');
 const { authMiddleware, requireRole } = require('../middleware/auth');
 const { parseUpload } = require('../utils/parse-upload');
-const { assignPlayerToSessions } = require('../utils/session-assignment');
+const { assignPlayerToSessions, lastNameInRange } = require('../utils/session-assignment');
 const { findOrCreatePlayer, upsertPlayerRegistration } = require('../utils/registrations');
 const { logAudit } = require('../utils/audit');
 const { parsePositiveInt } = require('../utils/ids');
@@ -281,13 +281,10 @@ async function processPlayerRows(rows, eventId, ageGroupId, orgId) {
     // Predict session assignment
     let assignedSession = null;
     if (status !== 'error' && fields.last_name && sessions.length > 0) {
-      const initial = (fields.last_name || '').charAt(0).toUpperCase();
       for (const session of sessions) {
         let matches = false;
         if (session.split_method === 'last_name') {
-          const start = (session.last_name_start || 'A').toUpperCase();
-          const end   = (session.last_name_end   || 'Z').toUpperCase();
-          matches = initial >= start && initial <= end;
+          matches = lastNameInRange(fields.last_name, session.last_name_start, session.last_name_end);
         } else if (session.split_method === 'jersey_range' && jerseyNum) {
           matches = jerseyNum >= (session.jersey_min ?? 0) && jerseyNum <= (session.jersey_max ?? 99999);
         } else if (session.split_method === 'none') {

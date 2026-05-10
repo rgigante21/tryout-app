@@ -58,6 +58,54 @@ _Avoid_: Complete, Scoring Complete (old names — replaced)
 
 ### Sessions & Today
 
+**Session Block**: A planning unit that creates one or more related Sessions for the same Tryout Event and Age Group.
+_Avoid_: Session group, batch
+
+**Balanced Session Split**: A previewed player distribution across a Session Block's time slots that prioritizes the most even player count per Session over neat-looking alphabet or jersey ranges.
+_Avoid_: Even split, automatic placement
+
+**Tryout Participant**: A player registration marked as expected to participate in a Tryout Event.
+_Avoid_: Registered player, active player
+
+**Planning Gap**: An open time slot inferred from already-created Sessions in a Tryout Event schedule.
+_Avoid_: Rink availability, ice reservation
+
+**Game Line Tier**: A configurable ranked band of Tryout Participants used to place similar-skill players against each other during game Sessions.
+_Avoid_: A team, cut line, final placement
+
+**Game Roster Draft**: A coordinator-editable team and line assignment generated from Results before game Sessions are run.
+_Avoid_: Automatic roster, final game roster
+
+**Roster Seed Source**: The starting point used to generate a Game Roster Draft, such as skills rankings, Current Team Context, or a manual blank draft.
+_Avoid_: Ranking mode, auto-sort
+
+**Default Roster Seed Source**: The admin-selected Roster Seed Source normally used for an Age Group.
+_Avoid_: Required ranking mode, permanent roster rule
+
+**Age Group Planning Defaults**: Admin-selected defaults that prefill session planning and roster-building workflows for an Age Group without limiting which options can be used.
+_Avoid_: Age group restrictions, locked workflow
+
+Session planning defaults include preferred session type, default skill slot length, preferred split method, and default roster seed source.
+Game roster defaults include default team count, default players per line or tier, and default Team Context Ladder.
+
+**Published Game Roster**: A Game Roster Draft that has been written into game Sessions as the operational roster.
+_Avoid_: Locked draft, generated teams
+
+**Game Roster Builder**: The Results workflow where coordinators create, adjust, and publish Game Roster Drafts from skills-session rankings, current team context, or manual coordinator judgment.
+_Avoid_: Session setup, roster management
+
+**Current Team Context**: An optional event registration value that records a player's known team placement within the Organization before the Tryout Event begins.
+_Avoid_: Skill score, final outcome
+
+**Team Context Ladder**: An ordered set of Current Team Context labels for a Tryout Event and Age Group.
+_Avoid_: Free-text team labels, final rankings
+
+**Submitted Evaluation**: A scorer's recorded assessment of a Tryout Participant for a Session.
+_Avoid_: Editable ranking, coordinator adjustment
+
+**Score Lock**: The point when Submitted Evaluations can no longer be changed because the Session has reached Scores In.
+_Avoid_: Finalization, roster lock
+
 **Today View**: The live tryout night dashboard. Shows active and upcoming sessions at a glance. Handles session status changes (manual override) and scorer progress (drill into session for detail). Scorer-level breakdown lives one tap into a session — Today stays scannable.
 
 **Sessions View**: Setup and planning only. Used before tryout night to create session blocks, assign scorers, and manage the schedule. Not used during a live event.
@@ -86,6 +134,25 @@ _Avoid_: Complete, Scoring Complete (old names — replaced)
 - A **U-level Age Group** derives its valid birth year range from `max_age` + the event's **Season Year**
 - A **Birth Year Age Group** stores its valid range explicitly as `birth_year_min` / `birth_year_max`
 - An **Import Preview** belongs to one **Tryout Event** and one **Age Group**
+- A **Session Block** belongs to one **Tryout Event** and one **Age Group**
+- A **Session Block** creates one or more **Sessions**
+- A **Balanced Session Split** belongs to one **Session Block** and counts only **Tryout Participants**
+- A **Planning Gap** is inferred from existing **Sessions**
+- A **Game Line Tier** is derived from Results and can span multiple game teams
+- A game team can contain players from multiple **Game Line Tiers**
+- A **Game Roster Draft** is generated from **Game Line Tiers** and can be edited by a coordinator before game Sessions
+- A **Published Game Roster** is created from one **Game Roster Draft**
+- The **Game Roster Builder** belongs in Results and does not replace Sessions setup or event roster management
+- Game Session scheduling and **Game Roster Draft** creation are independent until a coordinator publishes the draft into game Sessions
+- A **Game Roster Draft** can be manually adjusted without changing **Submitted Evaluations**
+- **Submitted Evaluations** are not changed to influence game roster tiers
+- A **Score Lock** applies when a Session reaches Scores In
+- A **Game Roster Draft** can be created without skills-session rankings when coordinators use **Current Team Context** or manual judgment
+- A **Team Context Ladder** orders Current Team Context values for game roster seeding
+- A **Game Roster Draft** has one **Roster Seed Source**
+- An **Age Group** can have one **Default Roster Seed Source**
+- An **Age Group** can have **Age Group Planning Defaults**
+- **Age Group Planning Defaults** prefill workflows but do not remove options from other Age Groups
 
 ### Multi-Tenancy & Feature Flags
 

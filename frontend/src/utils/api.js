@@ -128,6 +128,15 @@ export const api = {
   deleteSessionBlock: (id)   => request('DELETE', `/session-blocks/${id}`),
   reassignBlock:      (id)   => request('POST',   `/session-blocks/${id}/reassign`),
   suggestRanges:      (id, slots) => request('GET', `/session-blocks/${id}/suggest-ranges?slots=${slots}`),
+  sessionPlanningPreview: ({ eventId, ageGroupId, slots, slotMinutes }) => {
+    const p = new URLSearchParams({
+      event_id: String(eventId),
+      age_group_id: String(ageGroupId),
+      slots: String(slots),
+      slot_minutes: String(slotMinutes || 30),
+    });
+    return request('GET', `/session-blocks/planning-preview?${p}`);
+  },
 
   // Session players — move
   movePlayer: (data) => request('PATCH', '/session-players/move', data),
