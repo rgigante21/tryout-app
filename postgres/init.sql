@@ -101,8 +101,8 @@ CREATE TABLE sessions (
   start_time      TIME,
   status          VARCHAR(20) DEFAULT 'pending',
   -- status: pending | active | complete | scoring_complete | finalized
-  last_name_start VARCHAR(5),
-  last_name_end   VARCHAR(5),
+  last_name_start VARCHAR(255),
+  last_name_end   VARCHAR(255),
   jersey_min      INT,
   jersey_max      INT,
   home_team       SMALLINT,

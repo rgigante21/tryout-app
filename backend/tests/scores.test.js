@@ -8,7 +8,7 @@
  * - scorer NOT assigned to a session is rejected (403)
  * - player not on session roster is rejected (403)
  * - score values outside 1-5 range are rejected (400)
- * - finalized sessions reject score edits from scorers
+ * - score-locked sessions reject score edits
  * - admin can score any session regardless of assignment
  */
 
@@ -164,9 +164,25 @@ describe('POST /api/scores (admin)', () => {
   });
 });
 
-// ── Finalized session ────────────────────────────────────────────────────────
+// ── Score-locked sessions ────────────────────────────────────────────────────
 
-describe('POST /api/scores (finalized session)', () => {
+describe('POST /api/scores (score-locked session)', () => {
+  afterEach(async () => {
+    await pool.query(`UPDATE sessions SET status='active' WHERE id=$1`, [fixture.session.id]);
+  });
+
+  it('returns 403 when session is Scores In and caller is a scorer', async () => {
+    await pool.query(`UPDATE sessions SET status='scoring_complete' WHERE id=$1`, [fixture.session.id]);
+
+    const res = await request(app)
+      .post('/api/scores')
+      .set('Cookie', assignedScorer.cookie)
+      .send(validScore());
+
+    expect(res.status).toBe(403);
+    expect(res.body.error).toMatch(/score-locked/i);
+  });
+
   it('returns 403 when session is finalized and caller is a scorer', async () => {
     await pool.query(`UPDATE sessions SET status='finalized' WHERE id=$1`, [fixture.session.id]);
 
@@ -175,21 +191,19 @@ describe('POST /api/scores (finalized session)', () => {
       .set('Cookie', assignedScorer.cookie)
       .send(validScore());
 
-    await pool.query(`UPDATE sessions SET status='active' WHERE id=$1`, [fixture.session.id]);
-
     expect(res.status).toBe(403);
+    expect(res.body.error).toMatch(/score-locked/i);
   });
 
-  it('admin can still score a finalized session', async () => {
-    await pool.query(`UPDATE sessions SET status='finalized' WHERE id=$1`, [fixture.session.id]);
+  it('returns 403 for admin on a score-locked session through the normal score endpoint', async () => {
+    await pool.query(`UPDATE sessions SET status='scoring_complete' WHERE id=$1`, [fixture.session.id]);
 
     const res = await request(app)
       .post('/api/scores')
       .set('Cookie', adminUser.cookie)
       .send(validScore());
 
-    await pool.query(`UPDATE sessions SET status='active' WHERE id=$1`, [fixture.session.id]);
-
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(403);
+    expect(res.body.error).toMatch(/score-locked/i);
   });
 });

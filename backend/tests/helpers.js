@@ -45,6 +45,11 @@ async function ensureTestSchema() {
       ADD COLUMN IF NOT EXISTS accent_color VARCHAR(7) DEFAULT '#6B1E2E',
       ADD COLUMN IF NOT EXISTS features JSONB NOT NULL DEFAULT '{}'
   `);
+  await pool.query(`
+    ALTER TABLE sessions
+      ALTER COLUMN last_name_start TYPE VARCHAR(255),
+      ALTER COLUMN last_name_end TYPE VARCHAR(255)
+  `);
   schemaReady = true;
 }
 
@@ -68,6 +73,7 @@ function buildApp() {
 
   app.use('/api/auth',            require('../routes/auth'));
   app.use('/api/sessions',        authMiddleware, orgMiddleware, require('../routes/sessions'));
+  app.use('/api/session-blocks',   authMiddleware, orgMiddleware, require('../routes/session-blocks'));
   app.use('/api/session-players', authMiddleware, orgMiddleware, require('../routes/session-players'));
   app.use('/api/scores',          authMiddleware, orgMiddleware, require('../routes/scores'));
   app.use('/api/admin',           authMiddleware, orgMiddleware, require('../routes/admin'));

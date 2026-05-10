@@ -1,7 +1,7 @@
 const express = require('express');
 const pool    = require('../db/pool');
 const { authMiddleware, requireRole } = require('../middleware/auth');
-const { assignPlayersToBlock } = require('../utils/session-assignment');
+const { assignPlayersToBlock, normalizeLastNameKey } = require('../utils/session-assignment');
 
 const router     = express.Router();
 const guard      = [authMiddleware, requireRole('admin', 'coordinator')];
@@ -21,6 +21,104 @@ async function syncEventDates(client, eventId) {
     ) sub
     WHERE id = $1 AND sub.min_date IS NOT NULL
   `, [eventId]);
+}
+
+function parseTimeToMinutes(value) {
+  if (!value) return null;
+  const [h, m] = String(value).slice(0, 5).split(':').map(Number);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+  return h * 60 + m;
+}
+
+function minutesToTime(value) {
+  const minutes = ((value % 1440) + 1440) % 1440;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+function toDateKey(value) {
+  if (!value) return '';
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  return String(value).slice(0, 10);
+}
+
+function splitIntoBalancedLastNameRanges(players, slotCount) {
+  if (slotCount <= 0) return [];
+  if (!players.length) {
+    return Array.from({ length: slotCount }, (_, index) => ({
+      index,
+      count: 0,
+      lastNameStart: index === 0 ? 'A' : '',
+      lastNameEnd: index === slotCount - 1 ? 'Z' : '',
+    }));
+  }
+
+  const sorted = [...players].sort((a, b) => (
+    normalizeLastNameKey(a.last_name).localeCompare(normalizeLastNameKey(b.last_name)) ||
+    String(a.first_name || '').localeCompare(String(b.first_name || '')) ||
+    Number(a.registration_id) - Number(b.registration_id)
+  ));
+
+  const ranges = [];
+  let cursor = 0;
+  for (let index = 0; index < slotCount; index++) {
+    const remainingPlayers = sorted.length - cursor;
+    const remainingSlots = slotCount - index;
+    let size = Math.ceil(remainingPlayers / remainingSlots);
+    let endExclusive = Math.min(sorted.length, cursor + size);
+
+    // Keep identical last-name keys together so generated ranges do not overlap.
+    while (
+      endExclusive < sorted.length &&
+      endExclusive > cursor &&
+      normalizeLastNameKey(sorted[endExclusive - 1].last_name) === normalizeLastNameKey(sorted[endExclusive].last_name)
+    ) {
+      endExclusive++;
+    }
+
+    const chunk = sorted.slice(cursor, endExclusive);
+    ranges.push({
+      index,
+      count: chunk.length,
+      lastNameStart: chunk[0]?.last_name || '',
+      lastNameEnd: chunk[chunk.length - 1]?.last_name || '',
+    });
+    cursor = endExclusive;
+  }
+
+  return ranges;
+}
+
+function buildPlanningGaps(sessions, slotMinutes) {
+  const byDate = new Map();
+  for (const session of sessions) {
+    const date = toDateKey(session.session_date);
+    if (!byDate.has(date)) byDate.set(date, []);
+    byDate.get(date).push(session);
+  }
+
+  return [...byDate.entries()].map(([date, dateSessions]) => {
+    const starts = dateSessions
+      .map((s) => parseTimeToMinutes(s.start_time))
+      .filter((v) => v !== null)
+      .sort((a, b) => a - b);
+    const occupied = new Set(starts);
+    const openStarts = [];
+    for (const start of starts) {
+      const candidate = start + slotMinutes;
+      if (!occupied.has(candidate) && candidate < 24 * 60) {
+        openStarts.push(minutesToTime(candidate));
+      }
+    }
+    return {
+      date,
+      sessionCount: dateSessions.length,
+      firstStart: starts.length ? minutesToTime(starts[0]) : null,
+      lastStart: starts.length ? minutesToTime(starts[starts.length - 1]) : null,
+      openStarts: [...new Set(openStarts)].slice(0, 6),
+    };
+  }).sort((a, b) => a.date.localeCompare(b.date));
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -61,6 +159,64 @@ router.get('/', ...guard, async (req, res) => {
     res.json({ blocks: r.rows });
   } catch (err) {
     console.error('List session blocks error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────
+// GET /api/session-blocks/planning-preview?event_id=&age_group_id=&slots=&slot_minutes=
+// Preview balanced split counts and simple schedule openings before creating a block.
+// ─────────────────────────────────────────────────────────────────────
+router.get('/planning-preview', ...guard, async (req, res) => {
+  const eventId = parseInt(req.query.event_id, 10);
+  const ageGroupId = parseInt(req.query.age_group_id, 10);
+  const slotCount = Math.min(Math.max(parseInt(req.query.slots, 10) || 1, 1), 12);
+  const slotMinutes = Math.min(Math.max(parseInt(req.query.slot_minutes, 10) || 30, 15), 180);
+
+  if (!eventId || !ageGroupId) {
+    return res.status(400).json({ error: 'event_id and age_group_id are required' });
+  }
+
+  try {
+    const eventCheck = await pool.query(
+      'SELECT id FROM tryout_events WHERE id = $1 AND organization_id = $2',
+      [eventId, req.org_id]
+    );
+    if (!eventCheck.rows[0]) return res.status(404).json({ error: 'Event not found' });
+
+    const [playerRes, sessionRes] = await Promise.all([
+      pool.query(
+        `SELECT
+           per.id AS registration_id,
+           p.first_name,
+           p.last_name
+         FROM player_event_registrations per
+         JOIN players p ON p.id = per.player_id
+         WHERE per.age_group_id = $1
+           AND per.event_id = $2
+           AND per.will_tryout = true
+           AND p.organization_id = $3`,
+        [ageGroupId, eventId, req.org_id]
+      ),
+      pool.query(
+        `SELECT id, name, session_date, start_time, session_type
+         FROM sessions
+         WHERE event_id = $1
+           AND organization_id = $2
+         ORDER BY session_date, start_time`,
+        [eventId, req.org_id]
+      ),
+    ]);
+
+    const balancedSplits = splitIntoBalancedLastNameRanges(playerRes.rows, slotCount);
+    res.json({
+      totalPlayers: playerRes.rows.length,
+      targetPerSlot: slotCount ? Math.ceil(playerRes.rows.length / slotCount) : 0,
+      balancedSplits,
+      planningGaps: buildPlanningGaps(sessionRes.rows, slotMinutes),
+    });
+  } catch (err) {
+    console.error('Planning preview error:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });

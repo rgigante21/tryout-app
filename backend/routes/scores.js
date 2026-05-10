@@ -74,7 +74,7 @@ router.post('/', authMiddleware, async (req, res) => {
   const isAdmin = req.user.role === 'admin' || req.user.role === 'coordinator';
 
   try {
-    // 1. Verify the session exists, belongs to this org, and is not finalized
+    // 1. Verify the session exists, belongs to this org, and is not score-locked
     const sessionRes = await pool.query(
       'SELECT id, status FROM sessions WHERE id = $1 AND organization_id = $2',
       [sessionId, req.org_id]
@@ -84,8 +84,8 @@ router.post('/', authMiddleware, async (req, res) => {
     }
     const session = sessionRes.rows[0];
 
-    if (session.status === 'finalized' && !isAdmin) {
-      return res.status(403).json({ error: 'This session is finalized — scores cannot be changed' });
+    if (['scoring_complete', 'finalized'].includes(session.status)) {
+      return res.status(403).json({ error: 'This session is score-locked — scores cannot be changed' });
     }
 
     // 2. Scorer must be assigned to this session (skip check for admin/coordinator)

@@ -139,6 +139,7 @@ export default function EvaluationsTab({
           creatingBlock={creatingBlock}
           blockMsg={blockMsg}
           onCancel={() => setShowBlockWizard(false)}
+          planningContext={{ eventId, ageGroupId }}
         />
       )}
 

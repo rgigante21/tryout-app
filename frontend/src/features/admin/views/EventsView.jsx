@@ -965,6 +965,10 @@ export default function EventsView({
                     ageGroups={ageGroups}
                     wizardAgeGroupId={wizardAgeGroupId}
                     setWizardAgeGroupId={setWizardAgeGroupId}
+                    planningContext={{
+                      eventId: viewedEvent?.id || activeEvent?.id,
+                      ageGroupId: wizardAgeGroupId,
+                    }}
                   />
                 </div>
               )}

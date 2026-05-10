@@ -400,6 +400,7 @@ export function GroupDetailView({
   handleImportFile,
   commitImport,
   clearImport,
+  planningContext,
 }) {
   return (
     <div style={A.stackedSection}>
@@ -446,6 +447,7 @@ export function GroupDetailView({
           creatingBlock={creatingBlock}
           blockMsg={blockMsg}
           onCancel={() => setShowBlockWizard(false)}
+          planningContext={planningContext}
         />
       )}
 

@@ -1007,6 +1007,10 @@ export default function Admin() {
               unassignScorer={unassignScorer}
               onChangeAssignment={changeBlockAssignment}
               user={user}
+              planningContext={{
+                eventId: activeEvent?.id,
+                ageGroupId: wizardAgeGroupId,
+              }}
             />
           )}
 
@@ -1042,6 +1046,10 @@ export default function Admin() {
               unassignScorer={unassignScorer}
               onChangeAssignment={changeBlockAssignment}
               user={user}
+              planningContext={{
+                eventId: activeEvent?.id,
+                ageGroupId: activeGroup?.id,
+              }}
             />
           )}
 
@@ -1148,6 +1156,10 @@ export default function Admin() {
               handleImportFile={handleImportFile}
               commitImport={commitImport}
               clearImport={clearImport}
+              planningContext={{
+                eventId: activeEvent?.id,
+                ageGroupId: activeGroup?.id,
+              }}
             />
           )}
 
