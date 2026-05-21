@@ -59,6 +59,8 @@ export default function Admin() {
   const navigate = useNavigate();
   const location = useLocation();
   const route = getAdminRoute(location.pathname);
+  const searchParams = new URLSearchParams(location.search);
+  const rosterVariant = ['A', 'B', 'C'].includes(searchParams.get('variant')) ? searchParams.get('variant') : null;
 
   const ADMIN_ONLY_VIEWS = new Set(['events', 'workspace', 'groups', 'groupDetail', 'importExport', 'coaches']);
   useEffect(() => {
@@ -359,8 +361,13 @@ export default function Admin() {
   }, [navigate]);
 
   const openRosterGroup = useCallback((group) => {
-    navigate(`/admin/rosters/${group.code.toLowerCase()}`);
-  }, [navigate]);
+    navigate(`/admin/rosters/${group.code.toLowerCase()}${rosterVariant ? `?variant=${rosterVariant}` : ''}`);
+  }, [navigate, rosterVariant]);
+
+  const setRosterVariant = useCallback((variant) => {
+    if (!activeGroup || !['A', 'B', 'C'].includes(variant)) return;
+    navigate(`/admin/rosters/${activeGroup.code.toLowerCase()}?variant=${variant}`);
+  }, [activeGroup, navigate]);
 
   const openWorkspace = useCallback((group) => {
     if (!activeEvent) return;
@@ -1196,6 +1203,8 @@ export default function Admin() {
               onEditPlayer={handleRosterEditPlayer}
               onRemovePlayer={handleRosterRemovePlayer}
               onMovePlayer={handleRosterMovePlayer}
+              variant={rosterVariant}
+              onVariantChange={setRosterVariant}
             />
           )}
 
