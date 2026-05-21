@@ -53,7 +53,7 @@ function SortHdr({ field, sortBy, sortDir, onSort, style, children }) {
   );
 }
 
-export default function RosterTable({ players, onEditPlayer, onRemovePlayer }) {
+export default function RosterTable({ players, onEditPlayer, onRemovePlayer, onSelectPlayer }) {
   const [sortBy, setSortBy] = useState('jersey');
   const [sortDir, setSortDir] = useState('asc');
   const [filterPosition, setFilterPosition] = useState('');
@@ -166,7 +166,25 @@ export default function RosterTable({ players, onEditPlayer, onRemovePlayer }) {
         {displayed.map((p) => {
           const born = getBorn(p);
           return (
-            <div key={p.id} style={{ ...A.playerRow, gap: 8 }}>
+            <div
+              key={p.id}
+              onClick={() => onSelectPlayer?.(p)}
+              role={onSelectPlayer ? 'button' : undefined}
+              tabIndex={onSelectPlayer ? 0 : undefined}
+              data-testid={onSelectPlayer ? `roster-player-${p.id}` : undefined}
+              onKeyDown={(e) => {
+                if (!onSelectPlayer) return;
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  onSelectPlayer(p);
+                }
+              }}
+              style={{
+                ...A.playerRow,
+                gap: 8,
+                cursor: onSelectPlayer ? 'pointer' : undefined,
+              }}
+            >
               <span style={A.pJersey}>#{p.jersey_number}</span>
               <span style={A.pName}>{p.first_name} {p.last_name}</span>
               <span style={{ width: 52, textAlign: 'right', fontSize: 12, color: 'var(--text3)', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
@@ -182,14 +200,14 @@ export default function RosterTable({ players, onEditPlayer, onRemovePlayer }) {
                 <span style={{ display: 'flex', gap: 4, width: 60, flexShrink: 0, justifyContent: 'flex-end' }}>
                   {onEditPlayer && (
                     <button
-                      onClick={() => onEditPlayer(p)}
+                      onClick={(e) => { e.stopPropagation(); onEditPlayer(p); }}
                       style={{ ...A.iconBtn }}
                       title="Edit"
                     >✎</button>
                   )}
                   {onRemovePlayer && (
                     <button
-                      onClick={() => onRemovePlayer(p)}
+                      onClick={(e) => { e.stopPropagation(); onRemovePlayer(p); }}
                       style={{ ...A.iconBtn, color: 'var(--red-txt)' }}
                       title="Remove / Move"
                     >×</button>

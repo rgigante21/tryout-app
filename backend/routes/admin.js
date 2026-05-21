@@ -11,6 +11,36 @@ const router     = express.Router();
 const guard      = [authMiddleware, requireRole('admin', 'coordinator')];
 const adminGuard = [authMiddleware, requireRole('admin')];
 
+function deriveBirthYearRange(ageGroup, event) {
+  if (!ageGroup) return null;
+  if (ageGroup.max_age) {
+    const seasonYear = new Date(event.start_date).getFullYear();
+    return {
+      min: seasonYear - ageGroup.max_age,
+      max: seasonYear - ageGroup.max_age + 1,
+    };
+  }
+  if (ageGroup.birth_year_min && ageGroup.birth_year_max) {
+    return {
+      min: ageGroup.birth_year_min,
+      max: ageGroup.birth_year_max,
+    };
+  }
+  return null;
+}
+
+function validateBirthYearForAgeGroup(birthYear, ageGroup, event) {
+  if (!birthYear) return null;
+  const parsed = parseInt(birthYear, 10);
+  if (!parsed) return 'Birth year must be a valid year';
+  const range = deriveBirthYearRange(ageGroup, event);
+  if (!range) return null;
+  if (parsed < range.min || parsed > range.max) {
+    return `${ageGroup.name} accepts birth years ${range.min}-${range.max}`;
+  }
+  return null;
+}
+
 // ── Age Groups ────────────────────────────────────────────────────────────────
 
 router.get('/age-groups', ...guard, async (req, res) => {
@@ -245,7 +275,7 @@ router.get('/players', ...guard, async (req, res) => {
 });
 
 router.post('/players', ...adminGuard, async (req, res) => {
-  const { firstName, lastName, jerseyNumber, ageGroupId, eventId } = req.body;
+  const { firstName, lastName, jerseyNumber, ageGroupId, eventId, position, shot, birthYear } = req.body;
   if (!firstName || !lastName || !jerseyNumber || !ageGroupId || !eventId) {
     return res.status(400).json({ error: 'All fields required' });
   }
@@ -255,19 +285,43 @@ router.post('/players', ...adminGuard, async (req, res) => {
       await client.query('BEGIN');
       // Verify event belongs to this org
       const eventCheck = await client.query(
-        'SELECT id FROM tryout_events WHERE id = $1 AND organization_id = $2',
+        'SELECT * FROM tryout_events WHERE id = $1 AND organization_id = $2',
         [eventId, req.org_id]
       );
       if (!eventCheck.rows[0]) {
         await client.query('ROLLBACK');
         return res.status(404).json({ error: 'Event not found' });
       }
-      const player = await findOrCreatePlayer(client, { firstName, lastName, orgId: req.org_id });
+      const groupCheck = await client.query(
+        'SELECT * FROM age_groups WHERE id = $1 AND organization_id = $2',
+        [ageGroupId, req.org_id]
+      );
+      if (!groupCheck.rows[0]) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'Age group not found' });
+      }
+      const parsedBirthYear = birthYear ? parseInt(birthYear, 10) : null;
+      const birthYearError = validateBirthYearForAgeGroup(parsedBirthYear, groupCheck.rows[0], eventCheck.rows[0]);
+      if (birthYearError) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: birthYearError });
+      }
+      const dob = parsedBirthYear ? `${parsedBirthYear}-01-01` : null;
+      const player = await findOrCreatePlayer(client, {
+        firstName,
+        lastName,
+        dateOfBirth: dob,
+        birthYear: parsedBirthYear,
+        shot: shot || null,
+        orgId: req.org_id,
+      });
       const registration = await upsertPlayerRegistration(client, {
         playerId: player.id,
         eventId,
         ageGroupId,
         jerseyNumber: parseInt(jerseyNumber),
+        position: position || 'skater',
+        shot: shot || null,
       });
       await assignPlayerToSessions(client, player.id, ageGroupId, eventId);
       await client.query('COMMIT');
@@ -278,6 +332,7 @@ router.post('/players', ...adminGuard, async (req, res) => {
           first_name: player.first_name,
           last_name: player.last_name,
           date_of_birth: player.date_of_birth,
+          birth_year: player.birth_year,
           gender: player.gender,
           external_id: player.external_id,
           jersey_number: registration.jersey_number,
@@ -361,7 +416,8 @@ router.patch('/players/:id', ...adminGuard, async (req, res) => {
     try {
       await client.query('BEGIN');
       const lookup = await client.query(
-        `SELECT per.player_id FROM player_event_registrations per
+        `SELECT per.player_id, per.age_group_id, per.event_id, te.start_date
+         FROM player_event_registrations per
          JOIN tryout_events te ON te.id = per.event_id
          WHERE per.id = $1 AND te.organization_id = $2`,
         [req.params.id, req.org_id]
@@ -370,11 +426,21 @@ router.patch('/players/:id', ...adminGuard, async (req, res) => {
         await client.query('ROLLBACK');
         return res.status(404).json({ error: 'Player not found' });
       }
+      const groupCheck = await client.query(
+        'SELECT * FROM age_groups WHERE id = $1 AND organization_id = $2',
+        [lookup.rows[0].age_group_id, req.org_id]
+      );
+      const parsedBirthYear = birthYear ? parseInt(birthYear, 10) : null;
+      const birthYearError = validateBirthYearForAgeGroup(parsedBirthYear, groupCheck.rows[0], lookup.rows[0]);
+      if (birthYearError) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: birthYearError });
+      }
       const playerId = lookup.rows[0].player_id;
-      const dob = birthYear ? `${birthYear}-01-01` : null;
+      const dob = parsedBirthYear ? `${parsedBirthYear}-01-01` : null;
       await client.query(
         `UPDATE players SET first_name = $1, last_name = $2, birth_year = $3, date_of_birth = $4 WHERE id = $5`,
-        [firstName, lastName, birthYear || null, dob, playerId]
+        [firstName, lastName, parsedBirthYear, dob, playerId]
       );
       await client.query(
         `UPDATE player_event_registrations SET jersey_number = $1, position = $2, shot = $3 WHERE id = $4`,
@@ -410,8 +476,9 @@ router.post('/players/:id/move', ...adminGuard, async (req, res) => {
     try {
       await client.query('BEGIN');
       const lookup = await client.query(
-        `SELECT per.player_id, per.event_id, per.age_group_id
+        `SELECT per.player_id, per.event_id, per.age_group_id, p.birth_year, te.start_date
          FROM player_event_registrations per
+         JOIN players p ON p.id = per.player_id
          JOIN tryout_events te ON te.id = per.event_id
          WHERE per.id = $1 AND te.organization_id = $2`,
         [req.params.id, req.org_id]
@@ -422,14 +489,17 @@ router.post('/players/:id/move', ...adminGuard, async (req, res) => {
       }
       const { player_id: playerId, event_id: eventId } = lookup.rows[0];
       const groupCheck = await client.query(
-        `SELECT ag.id FROM age_groups ag
-         JOIN tryout_events te ON te.id = ag.event_id
-         WHERE ag.id = $1 AND ag.event_id = $2 AND te.organization_id = $3`,
-        [targetAgeGroupId, eventId, req.org_id]
+        'SELECT * FROM age_groups WHERE id = $1 AND organization_id = $2',
+        [targetAgeGroupId, req.org_id]
       );
       if (!groupCheck.rows[0]) {
         await client.query('ROLLBACK');
         return res.status(400).json({ error: 'Target age group not found in this event' });
+      }
+      const birthYearError = validateBirthYearForAgeGroup(lookup.rows[0].birth_year, groupCheck.rows[0], lookup.rows[0]);
+      if (birthYearError) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: birthYearError });
       }
       await client.query(
         `DELETE FROM scores WHERE player_id = $1 AND session_id IN (
