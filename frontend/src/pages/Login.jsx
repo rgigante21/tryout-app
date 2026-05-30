@@ -111,7 +111,6 @@ export default function Login() {
                 type="text"
                 value={lookupCode}
                 onChange={e => setLookupCode(e.target.value)}
-                placeholder="weymouth"
                 required
                 autoFocus
                 autoCapitalize="none"
