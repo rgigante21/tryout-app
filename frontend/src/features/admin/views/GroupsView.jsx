@@ -270,6 +270,9 @@ export function GroupsIndexView({ ageGroups, groupStats, openGroup, openWorkspac
             Keep rosters and session planning organized by age group so coordinators can move quickly between levels during tryouts.
           </div>
         </div>
+        <button onClick={() => setShowAdd((v) => !v)} style={showAdd ? A.ghostBtn : A.primaryBtn}>
+          {showAdd ? 'Cancel' : '+ New Age Group'}
+        </button>
       </div>
 
       {showAdd && (

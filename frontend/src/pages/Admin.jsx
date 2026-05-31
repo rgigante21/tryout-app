@@ -3,7 +3,7 @@ import { matchPath, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { api } from '../utils/api';
 import { A, ADMIN_CSS } from '../features/admin/styles';
-import { Sidebar, defaultBlock, fmt, ArchiveDropdown } from '../features/admin/shared';
+import { Sidebar, defaultBlock } from '../features/admin/shared';
 import OverviewView from '../features/admin/views/OverviewView';
 import SessionsView from '../features/admin/views/SessionsView';
 import EventsView from '../features/admin/views/EventsView';
@@ -818,44 +818,12 @@ export default function Admin() {
     .filter((s) => sessDateFilter === 'all' || String(s.session_date).slice(0, 10) === sessDateFilter)
     .filter((s) => ageGroupFilter === 'all' || String(s.age_group_id) === ageGroupFilter);
 
-  const workspaceAgeGroup = route.view === 'workspace'
-    ? (ageGroups.find((g) => String(g.id) === String(route.ageGroupId)) || null)
-    : null;
-
   const currentNav = route.view === 'groupDetail' ? 'groups'
     : route.view === 'sessionGroup' ? 'sessions'
     : route.view === 'rankings' ? 'results'
     : route.view === 'rosterGroup' ? 'rosters'
     : route.view === 'workspace' ? 'groups'
     : route.view;
-  const backTarget = route.view === 'groupDetail'
-    ? { label: '← Age Groups', to: '/admin/groups' }
-    : route.view === 'sessionGroup'
-      ? { label: '← Sessions', to: '/admin/sessions' }
-      : route.view === 'rankings'
-        ? { label: '← Results', to: '/admin/results' }
-        : route.view === 'rosterGroup'
-          ? { label: '← Rosters', to: '/admin/rosters' }
-          : route.view === 'workspace'
-          ? { label: '← Age Groups', to: '/admin/groups' }
-          : null;
-
-  const pageTitle = {
-    overview: 'Today',
-    sessions: 'Sessions',
-    sessionGroup: activeGroup ? `${activeGroup.name} Sessions` : 'Sessions',
-    events: (viewedEvent || activeEvent)?.name || 'Tryout Setup',
-    groups: 'Age Groups',
-    groupDetail: activeGroup ? activeGroup.name : 'Age Groups',
-    rankings: activeGroup ? `${activeGroup.name} Rankings` : 'Rankings',
-    coaches: 'Coaches & Scorers',
-    results: 'Results',
-    rosters: 'Rosters',
-    rosterGroup: activeGroup ? `${activeGroup.name} Roster` : 'Rosters',
-    checkin: 'Check-In',
-    importExport: 'Import / Export',
-    workspace: workspaceAgeGroup ? `${workspaceAgeGroup.name} Workspace` : 'Workspace',
-  }[route.view];
 
   return (
     <div className="admin-shell" style={{ ...A.shell, '--maroon': orgAccentColor, '--maroon-light': orgAccentColor + 'BB' }}>
@@ -872,92 +840,6 @@ export default function Admin() {
       />
 
       <div style={A.main}>
-        {route.view !== 'overview' && (
-        <div style={A.topbar}>
-          <div style={A.topbarLeft}>
-            {backTarget && (
-              <button onClick={() => goTo(backTarget.to)} style={A.backLink}>{backTarget.label}</button>
-            )}
-            <div>
-              <h2 style={A.pageTitle}>{pageTitle}</h2>
-              {route.view === 'events' && (viewedEvent || activeEvent) && (
-                <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 1, lineHeight: 1.3 }}>
-                  {(() => {
-                    const ev = viewedEvent || activeEvent;
-                    return `${ev.season} · ${fmt.date(ev.start_date)} to ${fmt.date(ev.end_date)}`;
-                  })()}
-                </div>
-              )}
-            </div>
-          </div>
-          <div style={A.topbarRight}>
-            {availableEvents.length > 1 && route.view !== 'events' && (
-              <select
-                value={activeEvent ? String(activeEvent.id) : ''}
-                onChange={(e) => setSelectedEventId(e.target.value)}
-                style={A.toolbarSelect}
-                aria-label="Selected tryout"
-              >
-                {availableEvents.map((event) => (
-                  <option key={event.id} value={event.id}>
-                    {event.name} ({event.season})
-                  </option>
-                ))}
-              </select>
-            )}
-            {route.view === 'events' && availableEvents.length > 1 && (
-              <select
-                value={activeEvent ? String(activeEvent.id) : ''}
-                onChange={(e) => {
-                  setSelectedEventId(e.target.value);
-                  setViewedEventId(e.target.value);
-                }}
-                style={A.toolbarSelect}
-                aria-label="Selected tryout"
-              >
-                {availableEvents.map((event) => (
-                  <option key={event.id} value={event.id}>
-                    {event.name} ({event.season})
-                  </option>
-                ))}
-              </select>
-            )}
-            {route.view === 'events' && (
-              <ArchiveDropdown
-                archivedEvents={archivedEvents}
-                onSelect={(eventId) => {
-                  setViewedEventId(String(eventId));
-                  setShowBlockWizard(false);
-                }}
-              />
-            )}
-            {route.view === 'events' && isArchivedEventView && activeEvent && (
-              <button
-                onClick={() => setViewedEventId(String(activeEvent.id))}
-                style={A.ghostBtn}
-              >
-                ← Current
-              </button>
-            )}
-            {(route.view === 'sessionGroup' || route.view === 'sessions') && (
-              <button onClick={() => setShowBlockWizard((v) => !v)} style={showBlockWizard ? A.ghostBtn : A.primaryBtn}>
-                {showBlockWizard ? 'Cancel' : '+ Session Block'}
-              </button>
-            )}
-            {route.view === 'groups' && (
-              <button onClick={() => setShowAddAgeGroup((v) => !v)} style={showAddAgeGroup ? A.ghostBtn : A.primaryBtn}>
-                {showAddAgeGroup ? 'Cancel' : '+ New Age Group'}
-              </button>
-            )}
-            {route.view === 'events' && (
-              <button onClick={() => { setShowBlockWizard(false); setShowCreateEvent((v) => !v); }} style={showCreateEvent ? A.ghostBtn : A.primaryBtn}>
-                {showCreateEvent ? 'Cancel' : '+ New Tryout'}
-              </button>
-            )}
-          </div>
-        </div>
-        )}
-
         <div style={A.contentArea}>
           {loading && <p style={A.muted}>Loading…</p>}
 
@@ -1072,6 +954,9 @@ export default function Admin() {
               newEvent={newEvent}
               setNewEvent={setNewEvent}
               showCreateEvent={showCreateEvent}
+              setShowCreateEvent={setShowCreateEvent}
+              setSelectedEventId={setSelectedEventId}
+              setViewedEventId={setViewedEventId}
               createEvent={createEvent}
               creatingEvent={creatingEvent}
               archiveEvent={archiveEvent}

@@ -294,7 +294,7 @@ export function Sidebar({ currentNav, user, logout, onNavigate, ageGroups = [], 
           <div style={SB.userName}>{user?.firstName} {user?.lastName}</div>
           <div style={SB.userRole}>{user?.role}</div>
         </div>
-        <button onClick={logout} style={SB.signOutBtn}>Logout</button>
+        <button onClick={logout} style={SB.signOutBtn} title="Log out">Logout</button>
       </div>
     </div>
   );

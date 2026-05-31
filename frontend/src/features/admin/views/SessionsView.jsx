@@ -549,11 +549,16 @@ export default function SessionsView({
 
   return (
     <div style={A.stackedSection}>
-      <div>
-        <div style={A.sectionLabel}>Session Planning</div>
-        <div style={A.sectionIntro}>
-          Build and manage session blocks, assign scorers, and review rosters before tryout day.
+      <div style={A.sectionHdr}>
+        <div>
+          <div style={A.sectionLabel}>Session Planning</div>
+          <div style={A.sectionIntro}>
+            Build and manage session blocks, assign scorers, and review rosters before tryout day.
+          </div>
         </div>
+        <button onClick={() => setShowBlockWizard((v) => !v)} style={showBlockWizard ? A.ghostBtn : A.primaryBtn}>
+          {showBlockWizard ? 'Cancel' : '+ Session Block'}
+        </button>
       </div>
 
       {showBlockWizard && (
