@@ -872,6 +872,7 @@ export default function Admin() {
       />
 
       <div style={A.main}>
+        {route.view !== 'overview' && (
         <div style={A.topbar}>
           <div style={A.topbarLeft}>
             {backTarget && (
@@ -880,7 +881,7 @@ export default function Admin() {
             <div>
               <h2 style={A.pageTitle}>{pageTitle}</h2>
               {route.view === 'events' && (viewedEvent || activeEvent) && (
-                <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.68)', marginTop: 1, lineHeight: 1.3 }}>
+                <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 1, lineHeight: 1.3 }}>
                   {(() => {
                     const ev = viewedEvent || activeEvent;
                     return `${ev.season} · ${fmt.date(ev.start_date)} to ${fmt.date(ev.end_date)}`;
@@ -955,6 +956,7 @@ export default function Admin() {
             )}
           </div>
         </div>
+        )}
 
         <div style={A.contentArea}>
           {loading && <p style={A.muted}>Loading…</p>}
