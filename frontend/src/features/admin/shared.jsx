@@ -35,13 +35,13 @@ export const STATUS_META = {
 
 export const NAV_ITEMS = [
   { id: 'overview',     label: 'Today',          icon: '◆', section: 'overview', path: '/admin/overview' },
-  { id: 'events',       label: 'Tryout Setup',   icon: '◷', section: 'tryouts', path: '/admin/events',       roles: ['admin'] },
   { id: 'sessions',     label: 'Sessions',        icon: '≡', section: 'tryouts', path: '/admin/sessions' },
   { id: 'groups',       label: 'Age Groups',      icon: '▤', section: 'tryouts', path: '/admin/groups',        roles: ['admin'] },
   { id: 'checkin',      label: 'Check-In',        icon: '✓', section: 'tryouts', path: '/admin/checkin' },
   { id: 'results',      label: 'Results',         icon: '★', section: 'tryouts', path: '/admin/results' },
   { id: 'rosters',      label: 'Rosters',         icon: '≔', section: 'tryouts', path: '/admin/rosters' },
   { id: 'importExport', label: 'Import / Export', icon: '⇅', section: 'tryouts', path: '/admin/import-export', roles: ['admin'] },
+  { id: 'events',       label: 'Tryout Setup',   icon: '◷', section: 'tryouts', path: '/admin/events',       roles: ['admin'] },
   { id: 'coaches',      label: 'Coaches',         icon: '◯', section: 'people',  path: '/admin/coaches',       roles: ['admin'] },
 ];
 
@@ -294,7 +294,7 @@ export function Sidebar({ currentNav, user, logout, onNavigate, ageGroups = [], 
           <div style={SB.userName}>{user?.firstName} {user?.lastName}</div>
           <div style={SB.userRole}>{user?.role}</div>
         </div>
-        <button onClick={logout} style={SB.signOutBtn} title="Sign out">↩</button>
+        <button onClick={logout} style={SB.signOutBtn} title="Log out">Logout</button>
       </div>
     </div>
   );

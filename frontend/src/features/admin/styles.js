@@ -298,7 +298,17 @@ export const SB = {
   },
   userName: { fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.8)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
   userRole: { fontSize: 10, color: 'rgba(255,255,255,0.35)', textTransform: 'capitalize' },
-  signOutBtn: { background: 'none', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 6, color: 'rgba(255,255,255,0.5)', fontSize: 13, padding: '4px 8px', cursor: 'pointer', flexShrink: 0 },
+  signOutBtn: {
+    background: 'rgba(255,255,255,0.06)',
+    border: '1px solid rgba(255,255,255,0.18)',
+    borderRadius: 6,
+    color: 'rgba(255,255,255,0.72)',
+    fontSize: 12,
+    fontWeight: 700,
+    padding: '6px 10px',
+    cursor: 'pointer',
+    flexShrink: 0,
+  },
 };
 
 export const A = {

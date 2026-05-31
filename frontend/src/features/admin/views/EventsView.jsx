@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { A } from '../styles';
-import { fmt, STATUS_META, BlockWizardPanel } from '../shared';
+import { fmt, STATUS_META, BlockWizardPanel, ArchiveDropdown } from '../shared';
 import { api } from '../../../utils/api';
 
 const TODAY = new Date().toISOString().slice(0, 10);
@@ -755,11 +755,15 @@ function RostersTab({ viewedEvent, ageGroups }) {
 export default function EventsView({
   currentEvents = [],
   archivedEvents = [],
+  activeEvent,
   viewedEvent,
   isArchivedView,
   newEvent,
   setNewEvent,
   showCreateEvent,
+  setShowCreateEvent,
+  setSelectedEventId,
+  setViewedEventId,
   createEvent,
   creatingEvent,
   archiveEvent,
@@ -813,6 +817,54 @@ export default function EventsView({
 
   return (
     <div className="events-view-shell">
+      <div style={{ ...A.sectionHdr, marginBottom: 18 }}>
+        <div>
+          <div style={A.sectionLabel}>{viewedEvent?.name || 'Tryout Setup'}</div>
+          {viewedEvent && (
+            <div style={A.sectionIntro}>
+              {viewedEvent.season} · {fmt.date(viewedEvent.start_date)} to {fmt.date(viewedEvent.end_date)}
+            </div>
+          )}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          {currentEvents.length > 1 && (
+            <select
+              value={activeEvent ? String(activeEvent.id) : ''}
+              onChange={(e) => {
+                setSelectedEventId(e.target.value);
+                setViewedEventId(e.target.value);
+              }}
+              style={A.toolbarSelect}
+              aria-label="Selected tryout"
+            >
+              {currentEvents.map((event) => (
+                <option key={event.id} value={event.id}>
+                  {event.name} ({event.season})
+                </option>
+              ))}
+            </select>
+          )}
+          <ArchiveDropdown
+            archivedEvents={archivedEvents}
+            onSelect={(eventId) => {
+              setViewedEventId(String(eventId));
+              setShowBlockWizard(false);
+            }}
+          />
+          {isArchivedView && activeEvent && (
+            <button
+              onClick={() => setViewedEventId(String(activeEvent.id))}
+              style={A.ghostBtn}
+            >
+              ← Current
+            </button>
+          )}
+          <button onClick={() => { setShowBlockWizard(false); setShowCreateEvent((v) => !v); }} style={showCreateEvent ? A.ghostBtn : A.primaryBtn}>
+            {showCreateEvent ? 'Cancel' : '+ New Tryout'}
+          </button>
+        </div>
+      </div>
+
       {eventMsg.text && (
         <div style={eventMsg.type === 'success' ? A.successBox : A.errorBox}>{eventMsg.text}</div>
       )}
