@@ -109,11 +109,14 @@ router.post('/', authMiddleware, async (req, res) => {
 
     if (hasExplicitRoster) {
       const inRoster = await pool.query(
-        'SELECT 1 FROM session_players WHERE session_id = $1 AND player_id = $2',
+        'SELECT checked_in FROM session_players WHERE session_id = $1 AND player_id = $2',
         [sessionId, playerId]
       );
       if (!inRoster.rows[0]) {
         return res.status(403).json({ error: 'Player is not on this session roster' });
+      }
+      if (!inRoster.rows[0].checked_in) {
+        return res.status(403).json({ error: 'Player is not checked in for this session' });
       }
     }
 

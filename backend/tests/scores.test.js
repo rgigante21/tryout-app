@@ -38,6 +38,12 @@ beforeAll(async () => {
   created.userIds.push(assignedScorer.id, unassignedScorer.id, adminUser.id);
 
   await assignScorer(fixture.session.id, assignedScorer.id);
+  await pool.query(
+    `UPDATE session_players
+     SET checked_in = true, checked_in_at = NOW(), attendance_status = 'checked_in'
+     WHERE session_id = $1 AND player_id = $2`,
+    [fixture.session.id, fixture.player.id]
+  );
 });
 
 afterAll(async () => {
@@ -107,6 +113,30 @@ describe('POST /api/scores (assigned scorer)', () => {
       .send({ ...validScore(), sessionId: 'banana' });
 
     expect(res.status).toBe(400);
+  });
+
+  it('rejects scoring a rostered player who is not checked in', async () => {
+    await pool.query(
+      `UPDATE session_players
+       SET checked_in = false, checked_in_at = NULL, attendance_status = NULL
+       WHERE session_id = $1 AND player_id = $2`,
+      [fixture.session.id, fixture.player.id]
+    );
+
+    const res = await request(app)
+      .post('/api/scores')
+      .set('Cookie', assignedScorer.cookie)
+      .send(validScore());
+
+    expect(res.status).toBe(403);
+    expect(res.body.error).toMatch(/not checked in/i);
+
+    await pool.query(
+      `UPDATE session_players
+       SET checked_in = true, checked_in_at = NOW(), attendance_status = 'checked_in'
+       WHERE session_id = $1 AND player_id = $2`,
+      [fixture.session.id, fixture.player.id]
+    );
   });
 });
 
