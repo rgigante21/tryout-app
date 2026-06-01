@@ -28,7 +28,8 @@ function fmtTime(t) {
 // Format "YYYY-MM-DD" → "Mon, Mar 24"
 function fmtDate(d) {
   if (!d) return '';
-  const dt = new Date(d + 'T12:00:00');
+  const datePart = String(d).split('T')[0];
+  const dt = new Date(datePart + 'T12:00:00');
   return dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 }
 

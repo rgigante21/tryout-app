@@ -112,6 +112,8 @@ export const api = {
   setOutcome:        (id, outcome)         => request('PATCH',  `/admin/players/${id}/outcome`, { outcome }),
   updatePlayer:      (id, data)            => request('PATCH',  `/admin/players/${id}`, data),
   movePlayerToGroup: (id, targetGroupId)   => request('POST',   `/admin/players/${id}/move`, { targetAgeGroupId: targetGroupId }),
+  rosterPlan:       (eventId, ageGroupId)  => request('GET',    `/admin/roster-builder?eventId=${eventId}&ageGroupId=${ageGroupId}`),
+  saveRosterPlan:   (data)                 => request('POST',   '/admin/roster-builder', data),
 
   // Admin — session completion & finalization
   sessionCompletion: (id)          => request('GET',   `/admin/sessions/${id}/completion`),
@@ -189,6 +191,15 @@ export const api = {
     if (filters.outcome) p.append('outcome', filters.outcome);
     return request('GET', `/events/${eventId}/export/preview?${p}`);
   },
+  rosterExports: (eventId, ageGroupId) => {
+    const p = new URLSearchParams();
+    if (ageGroupId) p.append('ageGroupId', ageGroupId);
+    return request('GET', `/events/${eventId}/export/roster-packages?${p}`);
+  },
+  createRosterExport: (eventId, ageGroupId) =>
+    request('POST', `/events/${eventId}/export/roster-packages`, { ageGroupId }),
+  downloadRosterExport: (eventId, exportId) =>
+    `${BASE}/events/${eventId}/export/roster-packages/${exportId}/download`,
 
   // Check-in
   checkin: (sessionId, playerId, checkedIn = true, attendanceStatus = undefined) =>

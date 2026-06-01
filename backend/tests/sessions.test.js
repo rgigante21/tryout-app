@@ -75,6 +75,36 @@ describe('GET /api/sessions/:id/players (assigned scorer)', () => {
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body.players)).toBe(true);
   });
+
+  it('only returns checked-in players to scorer users', async () => {
+    await pool.query(
+      `UPDATE session_players
+       SET checked_in = false, checked_in_at = NULL, attendance_status = NULL
+       WHERE session_id = $1 AND player_id = $2`,
+      [fixture.session.id, fixture.player.id]
+    );
+
+    const uncheckedRes = await request(app)
+      .get(`/api/sessions/${fixture.session.id}/players`)
+      .set('Cookie', assignedScorer.cookie);
+
+    expect(uncheckedRes.status).toBe(200);
+    expect(uncheckedRes.body.players).toHaveLength(0);
+
+    await pool.query(
+      `UPDATE session_players
+       SET checked_in = true, checked_in_at = NOW(), attendance_status = 'checked_in'
+       WHERE session_id = $1 AND player_id = $2`,
+      [fixture.session.id, fixture.player.id]
+    );
+
+    const checkedRes = await request(app)
+      .get(`/api/sessions/${fixture.session.id}/players`)
+      .set('Cookie', assignedScorer.cookie);
+
+    expect(checkedRes.status).toBe(200);
+    expect(checkedRes.body.players.map((p) => p.id)).toContain(fixture.player.id);
+  });
 });
 
 // ── Unassigned scorer ────────────────────────────────────────────────────────
@@ -110,6 +140,22 @@ describe('GET /api/sessions/:id/players (admin/coordinator)', () => {
       .get(`/api/sessions/${fixture.session.id}/players`)
       .set('Cookie', coordinator.cookie);
     expect(res.status).toBe(200);
+  });
+
+  it('admin can still see unchecked players for check-in operations', async () => {
+    await pool.query(
+      `UPDATE session_players
+       SET checked_in = false, checked_in_at = NULL, attendance_status = NULL
+       WHERE session_id = $1 AND player_id = $2`,
+      [fixture.session.id, fixture.player.id]
+    );
+
+    const res = await request(app)
+      .get(`/api/sessions/${fixture.session.id}/players`)
+      .set('Cookie', adminUser.cookie);
+
+    expect(res.status).toBe(200);
+    expect(res.body.players.map((p) => p.id)).toContain(fixture.player.id);
   });
 });
 

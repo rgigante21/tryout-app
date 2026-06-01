@@ -274,6 +274,174 @@ router.get('/players', ...guard, async (req, res) => {
   }
 });
 
+router.get('/roster-builder', ...guard, async (req, res) => {
+  const eventId = parsePositiveInt(req.query.eventId || req.query.event_id);
+  const ageGroupId = parsePositiveInt(req.query.ageGroupId || req.query.age_group_id);
+  if (!eventId || !ageGroupId) {
+    return res.status(400).json({ error: 'eventId and ageGroupId required' });
+  }
+
+  try {
+    const eventRes = await pool.query(
+      `SELECT te.id, ag.name AS age_group_name
+       FROM tryout_events te
+       JOIN age_groups ag ON ag.id = $2 AND ag.organization_id = te.organization_id
+       WHERE te.id = $1 AND te.organization_id = $3`,
+      [eventId, ageGroupId, req.org_id]
+    );
+    if (!eventRes.rows[0]) return res.status(404).json({ error: 'Tryout or age group not found' });
+
+    const teamsRes = await pool.query(
+      `SELECT id, name, sort_order
+       FROM roster_teams
+       WHERE organization_id = $1 AND event_id = $2 AND age_group_id = $3
+       ORDER BY sort_order`,
+      [req.org_id, eventId, ageGroupId]
+    );
+
+    if (!teamsRes.rows.length) {
+      return res.json({ teams: [] });
+    }
+
+    const playersRes = await pool.query(
+      `SELECT
+         rtp.roster_team_id,
+         rtp.sort_order,
+         per.id,
+         per.player_id,
+         p.first_name,
+         p.last_name,
+         p.birth_year,
+         p.date_of_birth,
+         p.external_id,
+         per.jersey_number,
+         per.position,
+         per.shot,
+         per.outcome
+       FROM roster_team_players rtp
+       JOIN roster_teams rt ON rt.id = rtp.roster_team_id
+       JOIN player_event_registrations per ON per.id = rtp.registration_id
+       JOIN players p ON p.id = per.player_id
+       WHERE rt.organization_id = $1
+         AND rt.event_id = $2
+         AND rt.age_group_id = $3
+       ORDER BY rt.sort_order, rtp.sort_order`,
+      [req.org_id, eventId, ageGroupId]
+    );
+
+    const playersByTeam = playersRes.rows.reduce((acc, player) => {
+      if (!acc[player.roster_team_id]) acc[player.roster_team_id] = [];
+      acc[player.roster_team_id].push(player);
+      return acc;
+    }, {});
+
+    res.json({
+      teams: teamsRes.rows.map((team) => ({
+        id: team.id,
+        name: team.name,
+        sortOrder: team.sort_order,
+        players: playersByTeam[team.id] || [],
+      })),
+    });
+  } catch (err) {
+    console.error('Get roster builder error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+router.post('/roster-builder', ...adminGuard, async (req, res) => {
+  const eventId = parsePositiveInt(req.body.eventId);
+  const ageGroupId = parsePositiveInt(req.body.ageGroupId);
+  const teams = Array.isArray(req.body.teams) ? req.body.teams : [];
+
+  if (!eventId || !ageGroupId || teams.length < 1) {
+    return res.status(400).json({ error: 'eventId, ageGroupId, and teams required' });
+  }
+
+  const registrationIds = teams.flatMap((team) => (
+    Array.isArray(team.playerIds) ? team.playerIds.map(parsePositiveInt).filter(Boolean) : []
+  ));
+  if (!registrationIds.length) return res.status(400).json({ error: 'At least one player is required' });
+  if (new Set(registrationIds).size !== registrationIds.length) {
+    return res.status(400).json({ error: 'A player can only be assigned to one roster team' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const eventRes = await client.query(
+      `SELECT te.id
+       FROM tryout_events te
+       JOIN age_groups ag ON ag.id = $2 AND ag.organization_id = te.organization_id
+       WHERE te.id = $1 AND te.organization_id = $3`,
+      [eventId, ageGroupId, req.org_id]
+    );
+    if (!eventRes.rows[0]) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Tryout or age group not found' });
+    }
+
+    const regsRes = await client.query(
+      `SELECT id
+       FROM player_event_registrations
+       WHERE event_id = $1 AND age_group_id = $2 AND id = ANY($3::int[])`,
+      [eventId, ageGroupId, registrationIds]
+    );
+    if (regsRes.rows.length !== registrationIds.length) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Roster contains players outside this tryout group' });
+    }
+
+    await client.query(
+      `DELETE FROM roster_teams
+       WHERE organization_id = $1 AND event_id = $2 AND age_group_id = $3`,
+      [req.org_id, eventId, ageGroupId]
+    );
+
+    const savedTeams = [];
+    for (let teamIndex = 0; teamIndex < teams.length; teamIndex += 1) {
+      const rawTeam = teams[teamIndex] || {};
+      const name = String(rawTeam.name || `Team ${teamIndex + 1}`).trim().slice(0, 120) || `Team ${teamIndex + 1}`;
+      const teamRes = await client.query(
+        `INSERT INTO roster_teams (organization_id, event_id, age_group_id, name, sort_order, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING id, name, sort_order`,
+        [req.org_id, eventId, ageGroupId, name, teamIndex, req.user.id]
+      );
+      const team = teamRes.rows[0];
+      savedTeams.push({ id: team.id, name: team.name, sortOrder: team.sort_order });
+
+      const playerIds = Array.isArray(rawTeam.playerIds)
+        ? rawTeam.playerIds.map(parsePositiveInt).filter(Boolean)
+        : [];
+      for (let playerIndex = 0; playerIndex < playerIds.length; playerIndex += 1) {
+        await client.query(
+          `INSERT INTO roster_team_players (roster_team_id, registration_id, sort_order)
+           VALUES ($1, $2, $3)`,
+          [team.id, playerIds[playerIndex], playerIndex]
+        );
+      }
+    }
+
+    await logAudit('roster_saved', req.user.id, {
+      eventId,
+      ageGroupId,
+      teamCount: savedTeams.length,
+      playerCount: registrationIds.length,
+    }, req.org_id);
+
+    await client.query('COMMIT');
+    res.json({ teams: savedTeams });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Save roster builder error:', err);
+    res.status(500).json({ error: 'Server error' });
+  } finally {
+    client.release();
+  }
+});
+
 router.post('/players', ...adminGuard, async (req, res) => {
   const { firstName, lastName, jerseyNumber, ageGroupId, eventId, position, shot, birthYear } = req.body;
   if (!firstName || !lastName || !jerseyNumber || !ageGroupId || !eventId) {

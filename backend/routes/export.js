@@ -100,6 +100,170 @@ function exportQueryParams(eventId, filters) {
   return [eventId, filters.ageGroupId || null, filters.finalizedOnly, filters.outcome];
 }
 
+async function buildSavedRosterCsv(eventId, ageGroupId, orgId) {
+  const { rows } = await pool.query(
+    `SELECT
+       rt.name AS team_name,
+       rt.sort_order AS team_sort,
+       rtp.sort_order AS player_sort,
+       p.external_id,
+       p.first_name,
+       p.last_name,
+       p.date_of_birth,
+       p.gender,
+       per.jersey_number,
+       per.position,
+       per.shot
+     FROM roster_teams rt
+     JOIN roster_team_players rtp ON rtp.roster_team_id = rt.id
+     JOIN player_event_registrations per ON per.id = rtp.registration_id
+     JOIN players p ON p.id = per.player_id
+     WHERE rt.organization_id = $1
+       AND rt.event_id = $2
+       AND rt.age_group_id = $3
+       AND per.will_tryout IS DISTINCT FROM false
+     ORDER BY rt.sort_order, rtp.sort_order, per.jersey_number`,
+    [orgId, eventId, ageGroupId]
+  );
+
+  const headers = [
+    'team_name', 'profile_id', 'first_name', 'last_name', 'date_of_birth',
+    'gender', 'jersey_number', 'position', 'shot',
+  ];
+  const lines = [csvRow(headers)];
+
+  for (const r of rows) {
+    lines.push(csvRow([
+      r.team_name,
+      r.external_id ?? '',
+      r.first_name,
+      r.last_name,
+      formatDateSE(r.date_of_birth),
+      formatGenderSE(r.gender),
+      r.jersey_number ?? '',
+      r.position ?? '',
+      formatShotSE(r.shot),
+    ]));
+  }
+
+  return { csv: `${lines.join('\n')}\n`, rowCount: rows.length };
+}
+
+// GET /:eventId/export/roster-packages
+// Saved roster export packages generated from the roster builder.
+router.get('/:eventId/export/roster-packages', ...guard, async (req, res) => {
+  const eventId = parseInt(req.params.eventId, 10);
+  const ageGroupId = req.query.ageGroupId ? parseInt(req.query.ageGroupId, 10) : null;
+  if (!eventId || Number.isNaN(eventId)) return res.status(400).json({ error: 'Invalid eventId' });
+  if (req.query.ageGroupId && Number.isNaN(ageGroupId)) return res.status(400).json({ error: 'ageGroupId must be a number' });
+
+  try {
+    const { rows } = await pool.query(
+      `SELECT
+         re.id, re.age_group_id, ag.name AS age_group_name, ag.code AS age_group_code,
+         re.folder_name, re.file_name, re.row_count, re.created_at,
+         u.first_name, u.last_name
+       FROM roster_exports re
+       JOIN age_groups ag ON ag.id = re.age_group_id
+       LEFT JOIN users u ON u.id = re.created_by
+       WHERE re.organization_id = $1
+         AND re.event_id = $2
+         AND ($3::int IS NULL OR re.age_group_id = $3)
+       ORDER BY re.created_at DESC`,
+      [req.org_id, eventId, ageGroupId]
+    );
+    res.json({ exports: rows });
+  } catch (err) {
+    console.error('[export] roster package list error:', err);
+    res.status(500).json({ error: 'Failed to load roster exports' });
+  }
+});
+
+// POST /:eventId/export/roster-packages
+// Generate and persist a SportsEngine-ready CSV from the saved roster builder teams.
+router.post('/:eventId/export/roster-packages', ...guard, async (req, res) => {
+  const eventId = parseInt(req.params.eventId, 10);
+  const ageGroupId = req.body.ageGroupId ? parseInt(req.body.ageGroupId, 10) : null;
+  if (!eventId || Number.isNaN(eventId) || !ageGroupId || Number.isNaN(ageGroupId)) {
+    return res.status(400).json({ error: 'eventId and ageGroupId required' });
+  }
+
+  try {
+    const { rows: metaRows } = await pool.query(
+      `SELECT te.name AS event_name, ag.name AS age_group_name, ag.code AS age_group_code
+       FROM tryout_events te
+       JOIN age_groups ag ON ag.id = $2 AND ag.organization_id = te.organization_id
+       WHERE te.id = $1 AND te.organization_id = $3`,
+      [eventId, ageGroupId, req.org_id]
+    );
+    if (!metaRows[0]) return res.status(404).json({ error: 'Tryout or age group not found' });
+
+    const teamCountRes = await pool.query(
+      `SELECT COUNT(*)::int AS cnt
+       FROM roster_teams
+       WHERE organization_id = $1 AND event_id = $2 AND age_group_id = $3`,
+      [req.org_id, eventId, ageGroupId]
+    );
+    if (teamCountRes.rows[0].cnt === 0) {
+      return res.status(400).json({ error: 'Save a roster before creating an export' });
+    }
+
+    const { csv, rowCount } = await buildSavedRosterCsv(eventId, ageGroupId, req.org_id);
+    const createdAt = new Date();
+    const stamp = createdAt.toISOString().replace(/[-:]/g, '').replace(/\..+$/, '').replace('T', '-');
+    const groupSlug = safeFilename(metaRows[0].age_group_name || metaRows[0].age_group_code || String(ageGroupId));
+    const folderName = `${groupSlug}-${stamp}`;
+    const fileName = `sportsengine-roster-${groupSlug}-${stamp}.csv`;
+
+    const insert = await pool.query(
+      `INSERT INTO roster_exports
+         (organization_id, event_id, age_group_id, export_type, folder_name, file_name, row_count, csv_content, created_by)
+       VALUES ($1, $2, $3, 'sportsengine_roster', $4, $5, $6, $7, $8)
+       RETURNING id, age_group_id, folder_name, file_name, row_count, created_at`,
+      [req.org_id, eventId, ageGroupId, folderName, fileName, rowCount, csv, req.user.id]
+    );
+
+    await logAudit('export_sportsengine_roster_saved', req.user?.id, {
+      eventId,
+      ageGroupId,
+      rowCount,
+      exportId: insert.rows[0].id,
+      folderName,
+    }, req.org_id);
+
+    res.status(201).json({ export: insert.rows[0] });
+  } catch (err) {
+    console.error('[export] roster package create error:', err);
+    res.status(500).json({ error: 'Failed to create roster export' });
+  }
+});
+
+// GET /:eventId/export/roster-packages/:exportId/download
+router.get('/:eventId/export/roster-packages/:exportId/download', ...guard, async (req, res) => {
+  const eventId = parseInt(req.params.eventId, 10);
+  const exportId = parseInt(req.params.exportId, 10);
+  if (!eventId || !exportId || Number.isNaN(eventId) || Number.isNaN(exportId)) {
+    return res.status(400).json({ error: 'Invalid export' });
+  }
+
+  try {
+    const { rows } = await pool.query(
+      `SELECT file_name, csv_content
+       FROM roster_exports
+       WHERE id = $1 AND event_id = $2 AND organization_id = $3`,
+      [exportId, eventId, req.org_id]
+    );
+    if (!rows[0]) return res.status(404).json({ error: 'Export not found' });
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="${rows[0].file_name}"`);
+    res.send(rows[0].csv_content);
+  } catch (err) {
+    console.error('[export] roster package download error:', err);
+    res.status(500).json({ error: 'Failed to download roster export' });
+  }
+});
+
 // GET /:eventId/export/preview
 // Cheap row-count preview for export filters.
 router.get('/:eventId/export/preview', ...guard, async (req, res) => {

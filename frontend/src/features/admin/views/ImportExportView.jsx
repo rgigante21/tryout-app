@@ -383,6 +383,8 @@ function ExportTab({ eventId, ageGroups }) {
   const [finalizedOnly, setFinalizedOnly] = useState(false);
   const [outcome, setOutcome] = useState('');
   const [preview, setPreview] = useState({ team: null, sportsengine: null });
+  const [rosterExports, setRosterExports] = useState([]);
+  const [loadingRosterExports, setLoadingRosterExports] = useState(false);
   const filters = { finalizedOnly, outcome };
 
   useEffect(() => {
@@ -396,6 +398,16 @@ function ExportTab({ eventId, ageGroups }) {
     });
     return () => { ignore = true; };
   }, [eventId, ageGroupId, finalizedOnly, outcome]);
+
+  useEffect(() => {
+    let ignore = false;
+    setLoadingRosterExports(true);
+    api.rosterExports(eventId, ageGroupId || null)
+      .then((data) => { if (!ignore) setRosterExports(data.exports || []); })
+      .catch(() => { if (!ignore) setRosterExports([]); })
+      .finally(() => { if (!ignore) setLoadingRosterExports(false); });
+    return () => { ignore = true; };
+  }, [eventId, ageGroupId]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -478,6 +490,45 @@ function ExportTab({ eventId, ageGroups }) {
         >
           Download CSV
         </a>
+      </div>
+
+      <div style={{
+        padding: '20px', borderRadius: 12,
+        border: '1px solid var(--border)', background: '#fff',
+      }}>
+        <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 6 }}>Saved SportsEngine Export Folders</div>
+        <div style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 14 }}>
+          Roster-builder exports created from each age group.
+        </div>
+        {loadingRosterExports && <div style={{ fontSize: 13, color: 'var(--text3)' }}>Loading folders...</div>}
+        {!loadingRosterExports && rosterExports.length === 0 && (
+          <div style={{ fontSize: 13, color: 'var(--text3)' }}>No saved roster exports yet.</div>
+        )}
+        {!loadingRosterExports && rosterExports.length > 0 && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: 12 }}>
+            {rosterExports.map((item) => (
+              <div key={item.id} style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 14, background: 'var(--bg2)' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                  <div style={{ width: 34, height: 28, borderRadius: 6, background: 'var(--gold-bg)', border: '1px solid var(--gold-dark)', flexShrink: 0 }} />
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {item.folder_name}
+                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 3 }}>
+                      {item.age_group_name} · {new Date(item.created_at).toLocaleString()} · {item.row_count} rows
+                    </div>
+                    <a
+                      href={api.downloadRosterExport(eventId, item.id)}
+                      style={{ ...A.ghostBtn, display: 'inline-flex', marginTop: 10, textDecoration: 'none' }}
+                    >
+                      Download CSV
+                    </a>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

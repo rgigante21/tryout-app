@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import RosterTable from '../RosterTable';
 import { A } from '../styles';
+import { api } from '../../../utils/api';
 
 const CURRENT_YEAR = new Date().getFullYear();
 const BIRTH_YEARS = Array.from({ length: 20 }, (_, i) => CURRENT_YEAR - 5 - i);
@@ -841,6 +842,299 @@ function CommandDeskRoster({
   );
 }
 
+function teamNameForIndex(activeGroup, index) {
+  const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  return `${activeGroup?.name || 'Roster'} Team ${letters[index] || index + 1}`;
+}
+
+function makeTeamSplit(players, targetTeamSize, names = [], activeGroup = null) {
+  const skaters = sortPlayers(players.filter((p) => p.will_tryout !== false && p.position !== 'goalie'));
+  const safeSize = Math.max(1, Math.min(skaters.length || 1, Number(targetTeamSize) || 1));
+  const teams = [];
+  for (let start = 0; start < skaters.length; start += safeSize) {
+    const index = teams.length;
+    teams.push({
+      name: names[index] || teamNameForIndex(activeGroup, index),
+      players: skaters.slice(start, start + safeSize),
+    });
+  }
+  return teams.length ? teams : [{ name: names[0] || teamNameForIndex(activeGroup, 0), players: [] }];
+}
+
+function moveDraggedPlayer(teams, dragged, targetTeamIndex, targetPlayerId = null) {
+  if (!dragged || targetTeamIndex == null) return teams;
+  const movingPlayer = teams[dragged.teamIndex]?.players?.find((p) => p.id === dragged.playerId);
+  if (!movingPlayer) return teams;
+
+  const next = teams.map((team) => ({
+    ...team,
+    players: team.players.filter((p) => p.id !== dragged.playerId),
+  }));
+  const targetPlayers = [...next[targetTeamIndex].players];
+  const insertAt = targetPlayerId
+    ? Math.max(0, targetPlayers.findIndex((p) => p.id === targetPlayerId))
+    : targetPlayers.length;
+  targetPlayers.splice(insertAt === -1 ? targetPlayers.length : insertAt, 0, movingPlayer);
+  next[targetTeamIndex] = { ...next[targetTeamIndex], players: targetPlayers };
+  return next;
+}
+
+function RosterBuilder({ activeEvent, activeGroup, players, canEdit }) {
+  const eligibleSkaters = useMemo(
+    () => sortPlayers(players.filter((p) => p.will_tryout !== false && p.position !== 'goalie')),
+    [players]
+  );
+  const defaultTeamSize = Math.max(1, Math.min(12, eligibleSkaters.length || 12));
+  const [teamSize, setTeamSize] = useState(() => defaultTeamSize);
+  const [teams, setTeams] = useState(() => makeTeamSplit(players, defaultTeamSize, [], activeGroup));
+  const [saved, setSaved] = useState(false);
+  const [loadingPlan, setLoadingPlan] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState(null);
+  const [dragged, setDragged] = useState(null);
+
+  useEffect(() => {
+    if (!activeEvent?.id || !activeGroup?.id) return;
+    let ignore = false;
+    setLoadingPlan(true);
+    setMessage(null);
+    api.rosterPlan(activeEvent.id, activeGroup.id)
+      .then((data) => {
+        if (ignore) return;
+        const savedTeams = data.teams || [];
+        if (savedTeams.length >= 2) {
+          const normalized = savedTeams.map((team, index) => ({
+            name: team.name || teamNameForIndex(activeGroup, index),
+            players: team.players || [],
+          }));
+          setTeams(normalized);
+          setTeamSize(Math.max(1, normalized[0]?.players.length || defaultTeamSize));
+          setSaved(true);
+        } else {
+          const split = makeTeamSplit(players, defaultTeamSize, [], activeGroup);
+          setTeams(split);
+          setTeamSize(defaultTeamSize);
+          setSaved(false);
+        }
+      })
+      .catch((err) => {
+        if (!ignore) setMessage({ type: 'error', text: err.message || 'Could not load saved roster.' });
+      })
+      .finally(() => {
+        if (!ignore) setLoadingPlan(false);
+      });
+    return () => { ignore = true; };
+  }, [activeEvent?.id, activeGroup?.id, players, eligibleSkaters.length, defaultTeamSize]);
+
+  const applyTeamSize = (value) => {
+    const nextSize = Math.max(1, Math.min(eligibleSkaters.length, Number(value) || 1));
+    setTeamSize(nextSize);
+    setTeams(makeTeamSplit(players, nextSize, teams.map((team) => team.name), activeGroup));
+    setSaved(false);
+  };
+
+  const renameTeam = (teamIndex, name) => {
+    setTeams((current) => current.map((team, index) => (index === teamIndex ? { ...team, name } : team)));
+    setSaved(false);
+  };
+
+  const onDropPlayer = (teamIndex, targetPlayerId = null) => {
+    setTeams((current) => moveDraggedPlayer(current, dragged, teamIndex, targetPlayerId));
+    setDragged(null);
+    setSaved(false);
+  };
+
+  const saveRoster = async () => {
+    if (!canEdit || !activeEvent?.id || !activeGroup?.id) return false;
+    setBusy(true);
+    setMessage(null);
+    try {
+      await api.saveRosterPlan({
+        eventId: activeEvent.id,
+        ageGroupId: activeGroup.id,
+        teams: teams.map((team) => ({
+          name: team.name,
+          playerIds: team.players.map((player) => player.id),
+        })),
+      });
+      setSaved(true);
+      setMessage({ type: 'ok', text: 'Roster saved.' });
+      return true;
+    } catch (err) {
+      setMessage({ type: 'error', text: err.message || 'Roster save failed.' });
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const createExport = async () => {
+    if (!canEdit || !activeEvent?.id || !activeGroup?.id) return;
+    setBusy(true);
+    setMessage(null);
+    try {
+      if (!saved) {
+        const ok = await api.saveRosterPlan({
+          eventId: activeEvent.id,
+          ageGroupId: activeGroup.id,
+          teams: teams.map((team) => ({
+            name: team.name,
+            playerIds: team.players.map((player) => player.id),
+          })),
+        });
+        if (!ok) return;
+        setSaved(true);
+      }
+      const result = await api.createRosterExport(activeEvent.id, activeGroup.id);
+      setMessage({ type: 'ok', text: `Export created in ${result.export.folder_name}.` });
+    } catch (err) {
+      setMessage({ type: 'error', text: err.message || 'Export failed.' });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!eligibleSkaters.length) return null;
+
+  return (
+    <section style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 10, marginBottom: 18, overflow: 'hidden' }}>
+      <div style={{ padding: 16, borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
+        <div>
+          <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 26, fontWeight: 700, color: 'var(--text)' }}>
+            Team Divider
+          </div>
+          <div style={{ fontSize: 13, color: 'var(--text3)', marginTop: 3 }}>
+            {eligibleSkaters.length} skaters tried out. Set a target team size, then drag cards to rebalance.
+          </div>
+        </div>
+        {canEdit && (
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button type="button" style={A.ghostBtn} onClick={saveRoster} disabled={busy || loadingPlan}>
+              {busy ? 'Saving...' : saved ? 'Saved' : 'Save Roster'}
+            </button>
+            <button type="button" style={A.primaryBtn} onClick={createExport} disabled={busy || loadingPlan}>
+              Create Export
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div style={{ padding: 16, borderBottom: '1px solid var(--border)' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(150px, 1fr) auto minmax(150px, 1fr)', gap: 12, alignItems: 'center' }}>
+          <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--maroon)' }}>
+            Target {teamSize} per team
+          </div>
+          <input
+            type="range"
+            min={1}
+            max={eligibleSkaters.length}
+            value={teamSize}
+            disabled={!canEdit}
+            onInput={(e) => applyTeamSize(e.currentTarget.value)}
+            onChange={(e) => applyTeamSize(e.target.value)}
+            aria-label="Target skaters per team"
+            style={{ width: 'min(360px, 42vw)', accentColor: 'var(--maroon)' }}
+          />
+          <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--maroon)', textAlign: 'right' }}>
+            {teams.length} teams · bottom {teams[teams.length - 1]?.players.length || 0}
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
+          {teams.map((team, index) => (
+            <div
+              key={`${team.name}-${index}`}
+              style={{
+                border: '1px solid var(--border)',
+                borderRadius: 20,
+                padding: '5px 10px',
+                fontSize: 12,
+                fontWeight: 800,
+                color: index === 0 ? 'var(--maroon)' : 'var(--text2)',
+                background: index === 0 ? 'var(--gold-bg)' : '#fff',
+              }}
+            >
+              {team.name}: {team.players.length}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {message && (
+        <div style={{ margin: 16, ...(message.type === 'error' ? A.errorBox : A.successBox) }}>
+          {message.text}
+        </div>
+      )}
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 260px), 1fr))', gap: 14, padding: 16 }}>
+        {teams.map((team, teamIndex) => (
+          <div
+            key={teamIndex}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={() => onDropPlayer(teamIndex)}
+            style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', minHeight: 240, background: 'var(--bg2)' }}
+          >
+            <div style={{ padding: 12, background: teamIndex === 0 ? '#4A1320' : '#2F3437', color: '#fff' }}>
+              <input
+                value={team.name}
+                disabled={!canEdit}
+                onChange={(e) => renameTeam(teamIndex, e.target.value)}
+                style={{
+                  width: '100%',
+                  border: 'none',
+                  background: 'transparent',
+                  color: '#fff',
+                  fontFamily: "'Barlow Condensed', sans-serif",
+                  fontSize: 24,
+                  fontWeight: 700,
+                  outline: 'none',
+                }}
+              />
+              <div style={{ fontSize: 11, fontWeight: 800, color: '#F7CC6A', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                {team.players.length} skaters
+              </div>
+            </div>
+            <div style={{ padding: 10, display: 'grid', gap: 8 }}>
+              {team.players.length === 0 && (
+                <div style={{ padding: 18, color: 'var(--text3)', fontSize: 13 }}>Drop skaters here.</div>
+              )}
+              {team.players.map((player) => (
+                <div
+                  key={player.id}
+                  draggable={canEdit}
+                  onDragStart={() => setDragged({ teamIndex, playerId: player.id })}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => { e.stopPropagation(); onDropPlayer(teamIndex, player.id); }}
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '54px minmax(0, 1fr)',
+                    gap: 10,
+                    alignItems: 'center',
+                    border: '1px solid var(--border)',
+                    borderRadius: 8,
+                    background: '#fff',
+                    padding: '10px 12px',
+                    cursor: canEdit ? 'grab' : 'default',
+                  }}
+                >
+                  <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 24, fontWeight: 700, color: 'var(--maroon)' }}>#{player.jersey_number}</div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {player.first_name} {player.last_name}
+                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--text3)' }}>
+                      {POS_LABELS[player.position] || 'Skater'} · {player.outcome || 'Registered'}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function PlayerModal({ player, activeEvent, activeGroup, onSave, onClose, saving }) {
   const isEdit = !!player;
   const birthYearRule = getBirthYearRule(activeGroup, activeEvent);
@@ -1196,11 +1490,15 @@ export default function RostersView({
       {activeVariant ? (
         <>
           {error && <div style={{ ...A.errorBox, marginTop: 0, marginBottom: 12 }}>{error}</div>}
+          <RosterBuilder activeEvent={activeEvent} activeGroup={activeGroup} players={players} canEdit={isAdmin} />
           {renderPrototypeRoster()}
           <PrototypeSwitcher activeVariant={activeVariant} onVariantChange={onVariantChange} />
         </>
       ) : (
-        renderDefaultRoster()
+        <>
+          <RosterBuilder activeEvent={activeEvent} activeGroup={activeGroup} players={players} canEdit={isAdmin} />
+          {renderDefaultRoster()}
+        </>
       )}
     </>
   );

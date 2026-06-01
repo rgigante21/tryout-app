@@ -279,6 +279,47 @@ CREATE TABLE score_entries (
 );
 
 -- ─────────────────────────────────────────
+-- ROSTER BUILDER + SAVED EXPORTS
+-- ─────────────────────────────────────────
+
+CREATE TABLE roster_teams (
+  id              SERIAL PRIMARY KEY,
+  organization_id INT NOT NULL REFERENCES organizations(id),
+  event_id        INT NOT NULL REFERENCES tryout_events(id) ON DELETE CASCADE,
+  age_group_id    INT NOT NULL REFERENCES age_groups(id) ON DELETE CASCADE,
+  name            VARCHAR(120) NOT NULL,
+  sort_order      INT NOT NULL DEFAULT 0,
+  created_by      INT REFERENCES users(id) ON DELETE SET NULL,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(event_id, age_group_id, sort_order)
+);
+
+CREATE TABLE roster_team_players (
+  id              SERIAL PRIMARY KEY,
+  roster_team_id  INT NOT NULL REFERENCES roster_teams(id) ON DELETE CASCADE,
+  registration_id INT NOT NULL REFERENCES player_event_registrations(id) ON DELETE CASCADE,
+  sort_order      INT NOT NULL DEFAULT 0,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(roster_team_id, registration_id),
+  UNIQUE(registration_id)
+);
+
+CREATE TABLE roster_exports (
+  id              SERIAL PRIMARY KEY,
+  organization_id INT NOT NULL REFERENCES organizations(id),
+  event_id        INT NOT NULL REFERENCES tryout_events(id) ON DELETE CASCADE,
+  age_group_id    INT NOT NULL REFERENCES age_groups(id) ON DELETE CASCADE,
+  export_type     VARCHAR(50) NOT NULL DEFAULT 'sportsengine_roster',
+  folder_name     VARCHAR(255) NOT NULL,
+  file_name       VARCHAR(255) NOT NULL,
+  row_count       INT NOT NULL DEFAULT 0,
+  csv_content     TEXT NOT NULL,
+  created_by      INT REFERENCES users(id) ON DELETE SET NULL,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- ─────────────────────────────────────────
 -- AUDIT LOG
 -- ─────────────────────────────────────────
 
@@ -380,6 +421,8 @@ CREATE INDEX idx_scores_scorer              ON scores (scorer_id);
 CREATE INDEX idx_scores_status              ON scores (status);
 CREATE INDEX idx_scores_registration        ON scores (registration_id);
 CREATE INDEX idx_score_entries_score        ON score_entries (score_id);
+CREATE INDEX idx_roster_teams_event_group   ON roster_teams (organization_id, event_id, age_group_id, sort_order);
+CREATE INDEX idx_roster_exports_event_group_created ON roster_exports (organization_id, event_id, age_group_id, created_at DESC);
 
 -- Audit log indexes
 CREATE INDEX idx_audit_log_event            ON audit_log (event);
@@ -576,6 +619,8 @@ ALTER TABLE sessions             ENABLE ROW LEVEL SECURITY;
 ALTER TABLE players              ENABLE ROW LEVEL SECURITY;
 ALTER TABLE evaluation_templates ENABLE ROW LEVEL SECURITY;
 ALTER TABLE audit_log            ENABLE ROW LEVEL SECURITY;
+ALTER TABLE roster_teams         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE roster_exports       ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY tenant_isolation ON users
   FOR ALL TO tryout_app
@@ -602,6 +647,14 @@ CREATE POLICY tenant_isolation ON evaluation_templates
   USING (organization_id = NULLIF(current_setting('app.current_org', true), '')::int);
 
 CREATE POLICY tenant_isolation ON audit_log
+  FOR ALL TO tryout_app
+  USING (organization_id = NULLIF(current_setting('app.current_org', true), '')::int);
+
+CREATE POLICY tenant_isolation ON roster_teams
+  FOR ALL TO tryout_app
+  USING (organization_id = NULLIF(current_setting('app.current_org', true), '')::int);
+
+CREATE POLICY tenant_isolation ON roster_exports
   FOR ALL TO tryout_app
   USING (organization_id = NULLIF(current_setting('app.current_org', true), '')::int);
 

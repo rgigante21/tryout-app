@@ -35,7 +35,7 @@ router.get('/mine', authMiddleware, async (req, res) => {
         ag.code  AS age_group_code,
         te.name  AS event_name,
         te.season,
-        (SELECT COUNT(*) FROM session_players sp WHERE sp.session_id = s.id) AS player_count,
+        (SELECT COUNT(*) FROM session_players sp WHERE sp.session_id = s.id AND sp.checked_in = true) AS player_count,
         (SELECT COUNT(*) FROM scores sc
          WHERE sc.session_id = s.id AND sc.scorer_id = $1) AS score_count
       FROM sessions s
@@ -256,8 +256,9 @@ router.get('/:id/players', authMiddleware, requireAssignedSessionAccess(), async
           AND sc.session_id = $1
           AND sc.scorer_id = $2
         WHERE sp.session_id = $1
+          AND ($3::boolean = true OR sp.checked_in = true)
         ORDER BY p.jersey_number
-      `, [sessionId, req.user.id]);
+      `, [sessionId, req.user.id, isAdmin]);
     } else {
       playersResult = await pool.query(`
         SELECT
@@ -275,8 +276,9 @@ router.get('/:id/players', authMiddleware, requireAssignedSessionAccess(), async
           AND sc.session_id = $1
           AND sc.scorer_id = $2
         WHERE per.age_group_id = $3 AND per.event_id = $4
+          AND $5::boolean = true
         ORDER BY per.jersey_number
-      `, [sessionId, req.user.id, session.age_group_id, session.event_id]);
+      `, [sessionId, req.user.id, session.age_group_id, session.event_id, isAdmin]);
     }
 
     // Completion stats: how many players have been scored by at least one scorer
