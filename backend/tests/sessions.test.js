@@ -316,6 +316,44 @@ describe('GET /api/admin/sessions/:id/completion', () => {
 
     expect(res.status).toBe(400);
   });
+
+  it('only counts checked-in players as work owed by scorers', async () => {
+    await pool.query(
+      `UPDATE session_players
+       SET checked_in = false, checked_in_at = NULL, attendance_status = NULL
+       WHERE session_id = $1`,
+      [fixture.session.id]
+    );
+
+    const uncheckedRes = await request(app)
+      .get(`/api/admin/sessions/${fixture.session.id}/completion`)
+      .set('Cookie', adminUser.cookie);
+
+    expect(uncheckedRes.status).toBe(200);
+    expect(uncheckedRes.body.totals.total_players).toBe(1);
+    expect(uncheckedRes.body.totals.checked_in_count).toBe(0);
+    expect(uncheckedRes.body.totals.attendance_recorded_count).toBe(0);
+    expect(uncheckedRes.body.totals.players_missing_scores).toBe(0);
+    expect(uncheckedRes.body.perScorer[0].total_players).toBe(0);
+
+    await pool.query(
+      `UPDATE session_players
+       SET checked_in = true, checked_in_at = NOW(), attendance_status = 'checked_in'
+       WHERE session_id = $1`,
+      [fixture.session.id]
+    );
+
+    const checkedRes = await request(app)
+      .get(`/api/admin/sessions/${fixture.session.id}/completion`)
+      .set('Cookie', adminUser.cookie);
+
+    expect(checkedRes.status).toBe(200);
+    expect(checkedRes.body.totals.checked_in_count).toBe(1);
+    expect(checkedRes.body.totals.attendance_recorded_count).toBe(1);
+    expect(checkedRes.body.totals.players_missing_scores).toBe(1);
+    expect(checkedRes.body.perScorer[0].total_players).toBe(1);
+    expect(checkedRes.body.perScorer[0].scores_submitted).toBe(0);
+  });
 });
 
 describe('PATCH /api/sessions/:id/players/:playerId/checkin', () => {

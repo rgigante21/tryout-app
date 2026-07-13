@@ -951,13 +951,16 @@ router.get('/sessions/:id/completion', ...guard, async (req, res) => {
     const [totalsRes, perScorerRes] = await Promise.all([
       pool.query(`
         SELECT
-          COUNT(DISTINCT COALESCE(sp.registration_id, per.id))::int AS total_players,
-          COUNT(DISTINCT CASE WHEN sp.checked_in THEN COALESCE(sp.registration_id, per.id) END)::int AS checked_in_count,
-          COUNT(DISTINCT COALESCE(sc.registration_id, per.id))::int AS players_with_any_score,
-          COUNT(DISTINCT COALESCE(sp.registration_id, per.id))
-            - COUNT(DISTINCT COALESCE(sc.registration_id, per.id)) AS players_missing_scores
+          COUNT(DISTINCT COALESCE(sp.registration_id, sp.player_id))::int AS total_players,
+          COUNT(DISTINCT CASE WHEN sp.checked_in THEN COALESCE(sp.registration_id, sp.player_id) END)::int AS checked_in_count,
+          COUNT(DISTINCT CASE WHEN sp.attendance_status IS NOT NULL
+            THEN COALESCE(sp.registration_id, sp.player_id) END)::int AS attendance_recorded_count,
+          COUNT(DISTINCT CASE WHEN sp.checked_in AND sc.id IS NOT NULL
+            THEN COALESCE(sp.registration_id, sp.player_id) END)::int AS players_with_any_score,
+          (COUNT(DISTINCT CASE WHEN sp.checked_in THEN COALESCE(sp.registration_id, sp.player_id) END)
+            - COUNT(DISTINCT CASE WHEN sp.checked_in AND sc.id IS NOT NULL
+              THEN COALESCE(sp.registration_id, sp.player_id) END))::int AS players_missing_scores
         FROM session_players sp
-        LEFT JOIN player_event_registrations per ON per.id = sp.registration_id
         LEFT JOIN scores sc
           ON sc.session_id = $1
          AND (
@@ -969,15 +972,24 @@ router.get('/sessions/:id/completion', ...guard, async (req, res) => {
       pool.query(`
         SELECT
           u.id, u.first_name, u.last_name, u.email,
-          COUNT(sc.id)::int AS scores_submitted,
-          (SELECT COUNT(*)::int FROM session_players sp2 WHERE sp2.session_id = $1) AS total_players
+          COUNT(DISTINCT CASE WHEN sc.id IS NOT NULL
+            THEN COALESCE(sp.registration_id, sp.player_id) END)::int AS scores_submitted,
+          COUNT(DISTINCT COALESCE(sp.registration_id, sp.player_id))::int AS total_players
         FROM session_scorers ss
         JOIN users u ON u.id = ss.user_id
-        LEFT JOIN scores sc ON sc.scorer_id = u.id AND sc.session_id = $1
+        LEFT JOIN session_players sp ON sp.session_id = $1 AND sp.checked_in = true
+        LEFT JOIN scores sc
+          ON sc.scorer_id = u.id
+         AND sc.session_id = $1
+         AND (
+              sc.registration_id = sp.registration_id
+           OR (sp.registration_id IS NULL AND sc.player_id = sp.player_id)
+         )
         WHERE ss.session_id = $1
+          AND u.organization_id = $2
         GROUP BY u.id, u.first_name, u.last_name, u.email
         ORDER BY u.last_name, u.first_name
-      `, [sessionId]),
+      `, [sessionId, req.org_id]),
     ]);
 
     res.json({

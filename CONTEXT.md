@@ -12,6 +12,9 @@ _Avoid_: Club, team, customer
 **Tryout Event**: A multi-day evaluation event tied to one Organization. Contains age groups, sessions, and players.
 _Avoid_: Tournament, camp
 
+**Local Tryout Event**: The first product wedge: one Organization running its own annual youth hockey tryout with volunteer coordinators and scorers.
+_Avoid_: Tournament operation, private evaluation service, season team management
+
 **Season Year**: The calendar year in which a Tryout Event takes place, derived from the event's `start_date`. Used to calculate valid birth years for U-level Age Groups.
 
 ### Age Groups
@@ -108,16 +111,51 @@ _Avoid_: Finalization, roster lock
 
 **Today View**: The live tryout night dashboard. Shows active and upcoming sessions at a glance. Handles session status changes (manual override) and scorer progress (drill into session for detail). Scorer-level breakdown lives one tap into a session — Today stays scannable.
 
+**Needs Attention**: A Today View warning about a live-event operational risk that could disrupt check-in, scoring, session progress, or score completion.
+_Avoid_: Setup warning, admin reminder
+
+**Progress Warning**: A simple Needs Attention condition that flags missing scorer activity or incomplete evaluations without time-based stall detection.
+_Avoid_: Stall detection, evaluator analytics
+
+**Tryout Night Demo Promise**: A hockey Organization can run a Local Tryout Event from one live Today View, from check-in through scoring progress to rankings-ready results.
+_Avoid_: General admin dashboard, spreadsheet replacement
+
+**Pilot Demo**: The first roadmap milestone: one Local Tryout Event shown end-to-end with credible setup, live operations, scoring, rankings, and export.
+_Avoid_: SaaS launch, generic platform demo
+
+**Seeded Demo Event**: A realistic but fictional Local Tryout Event used to demonstrate TryoutOPS without exposing real minors' data.
+_Avoid_: Real pilot data, empty sample data
+
+**Hero Age Group**: The primary Age Group used in a Seeded Demo Event walkthrough, with enough players, sessions, scorers, check-in states, scores, and results to prove operational confidence.
+_Avoid_: Sample division, demo bracket
+
+**Live Operations Workflow**: The first-class Pilot Demo workflow covering Today View coordination and scorer phone evaluation during the live Local Tryout Event.
+_Avoid_: Admin setup, spreadsheet workflow
+
+**Admin Setup Story**: The Pilot Demo walkthrough segment that shows how an Organization configures the Local Tryout Event before tryout night without becoming the headline live workflow.
+_Avoid_: Live dashboard, platform administration
+
+**Admin Demo Options**: The setup options shown in the Pilot Demo that prove TryoutOPS can fit an Organization's tryout process: branding, event setup, age groups, imports, session blocks, scorer assignments, check-in readiness, and export filters.
+_Avoid_: Feature flag management, security internals, exhaustive settings
+
+**Check-in Gate**: The rule that only checked-in or late-arriving Tryout Participants can be scored in the Player Grid.
+_Avoid_: Attendance note, optional check-in
+
+**Attendance Correction**: A coordinator or admin change to a Tryout Participant's attendance state that makes the Check-in Gate reflect what is happening at the rink.
+_Avoid_: Scoring override, bypass
+
 **Sessions View**: Setup and planning only. Used before tryout night to create session blocks, assign scorers, and manage the schedule. Not used during a live event.
 
 **Auto-advance (Scores In)**: When all scorers who submitted at least one score have completed all checked-in players, the session automatically advances to Scores In. Scorers who submitted zero scores (no-shows) are excluded from the requirement. Admin can manually override at any time.
 
-**Player Move**: Moving a player from one session to another. Available at any session status — not gated to On Ice. Primary use case: late-arriving or pre-notified player needs to move to a different time slot. Default destination: next session for the same Age Group. Cross-age-group moves are not standard but may be needed by other organizations. Scores are not carried over (moot in practice since moves happen before check-in).
+**Player Move**: A break-glass live-event action that moves a Tryout Participant from one Session to another when the assigned time slot no longer works. Default destination: next Session for the same Age Group. Cross-age-group moves are not standard but may be needed by other organizations. Scores are not carried over.
+_Avoid_: Primary scheduling workflow, session reassignment flow
 
 ## Relationships
 
 - An **Organization** owns many **Tryout Events**
 - An **Organization** owns many **Users**
+- A **Local Tryout Event** is the primary commercial wedge for TryoutOPS
 - An email address may have one **Organization Membership** per **Organization**
 - **Membership Creation** creates an **Organization Membership** inside exactly one **Organization**
 - **Membership Activation** follows **Membership Creation**
@@ -126,6 +164,7 @@ _Avoid_: Finalization, roster lock
 - An **Organization Login Code Alias** resolves to the same **Organization** as its current **Organization Login Code**
 - An **Organization Lookup** leads to one **Organization Sign-In Page**
 - A **User** signs in through exactly one **Organization Login Context**
+- **Manual Organization Provisioning** creates the first **Organization Login Context** for an early pilot
 - An **Organization-Scoped Session** is valid for exactly one **Organization**
 - A **Revocable Session** allows logout, password reset, or membership disablement to invalidate an **Organization-Scoped Session**
 - An **Isolated Organization Cookie** carries one **Organization-Scoped Session**
@@ -153,6 +192,16 @@ _Avoid_: Finalization, roster lock
 - An **Age Group** can have one **Default Roster Seed Source**
 - An **Age Group** can have **Age Group Planning Defaults**
 - **Age Group Planning Defaults** prefill workflows but do not remove options from other Age Groups
+- The **Tryout Night Demo Promise** is fulfilled primarily through the **Today View**, with setup and export workflows supporting it before and after the live event
+- The **Pilot Demo** comes before SaaS commercialization work such as billing, public signup, custom domains, and advanced provisioning
+- A **Pilot Demo** uses one **Seeded Demo Event** before real pilot data is imported
+- A **Seeded Demo Event** can include multiple Age Groups, but the walkthrough centers on one **Hero Age Group**
+- The **Live Operations Workflow** is polished before import/export, billing, public signup, custom domains, and advanced analytics
+- The **Admin Setup Story** supports the **Pilot Demo** before the **Live Operations Workflow** begins
+- **Admin Demo Options** are shown to prove fit for a hockey Organization, not to expose every platform setting
+- The **Check-in Gate** controls scorer access to a Tryout Participant during a Session
+- An **Attendance Correction** is the only live-event override for the **Check-in Gate**; scorers do not bypass attendance
+- A **Player Move** is a break-glass action, not a headline **Live Operations Workflow** feature
 
 ### Multi-Tenancy & Feature Flags
 
@@ -170,6 +219,9 @@ _Avoid_: Admin-set permanent password
 
 **Membership Recovery**: The Organization-scoped password reset flow for an existing Organization Membership.
 _Avoid_: Global password reset
+
+**Manual Organization Provisioning**: The early-pilot process where TryoutOPS staff create an Organization and its first admin before the Organization signs in.
+_Avoid_: Public signup, self-service onboarding
 
 **Organization Login Context**: The Organization boundary selected before credentials are checked; a User authenticates inside exactly one Organization context.
 _Avoid_: Tenant login, global login
@@ -225,6 +277,9 @@ Known flags (planned):
 - **Slim header** — event name + date + a warning badge (⚠ N) when Needs Attention items exist. Badge expands to show the warning list inline.
 - **Check-in display is status-aware** — Pending and On Ice sessions show check-in count prominently (with warning color if low). Off Ice and beyond show it small or not at all.
 - **No Age Groups section** — age group summary cards do not appear on Today. That's a planning/results concern.
+- **Live operations only** — full roster editing, rankings tables, import/export, session block planning, scorer score history, and Organization settings stay one click away from Today.
+- **Needs Attention is live-only** — Today warnings cover operational risks such as low check-in, missing scorers, stalled scorer progress, and incomplete evaluations; setup/admin reminders stay outside Today.
+- **Simple progress warnings first** — the Pilot Demo uses zero-submission and incomplete-evaluation warnings before introducing time-based stall detection.
 
 **Sidebar** — age group sub-items are removed from under Results and Rosters. Clicking Results or Rosters lands on those views directly; age group selection happens within the view. The Age Groups nav item itself remains.
 

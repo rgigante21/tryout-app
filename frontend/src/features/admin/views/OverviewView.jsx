@@ -75,14 +75,33 @@ function SlimHeader({ activeEvent, todayDate, setTodayDate, attentionCount, atte
           background: '#fff', border: '1px solid var(--border)', borderRadius: 10,
           boxShadow: '0 8px 24px rgba(0,0,0,0.12)', width: 320, maxWidth: '100vw',
           padding: 12, display: 'flex', flexDirection: 'column', gap: 8,
+          maxHeight: 'min(520px, 70vh)', overflowY: 'auto',
         }}>
+          <div style={{
+            padding: '1px 2px 5px', fontSize: 10, fontWeight: 900,
+            textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--maroon)',
+          }}>
+            Needs Attention · {attentionCount}
+          </div>
           {attentionItems.map((item) => (
-            <div key={item.title} style={{
+            <div key={item.id} style={{
               padding: '10px 12px', borderRadius: 8, background: '#FAF8F5',
               borderLeft: `4px solid ${item.color || 'var(--border)'}`,
             }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginBottom: 2 }}>{item.title}</div>
               <div style={{ fontSize: 12, color: 'var(--text3)' }}>{item.body}</div>
+              {item.action && (
+                <button
+                  onClick={() => { setShowWarnings(false); item.action(); }}
+                  style={{
+                    marginTop: 7, padding: 0, border: 0, background: 'transparent',
+                    color: 'var(--maroon)', font: 'inherit', fontSize: 12,
+                    fontWeight: 800, cursor: 'pointer',
+                  }}
+                >
+                  {item.actionLabel || 'Resolve'} →
+                </button>
+              )}
             </div>
           ))}
         </div>
@@ -533,6 +552,7 @@ export default function OverviewView({
   todaySessions,
   todayScorers = {},
   todayCheckIns = {},
+  todayCompletion = {},
   activeEvent,
   updateStatus,
   user,
@@ -542,20 +562,97 @@ export default function OverviewView({
 }) {
   const [selectedSession, setSelectedSession] = useState(null);
 
-  // Build attention items
-  const missingScorers  = todaySessions.filter((s) => !(todayScorers[s.id] || []).length);
-  const stuckOffIce     = todaySessions.filter((s) => s.status === 'complete');
+  const openSession = (sess) => setSelectedSession(sess);
+  const closeSession = () => setSelectedSession(null);
+
+  // Build prioritized, actionable operational guidance.
   const attentionItems  = [];
 
   if (!activeEvent && openTryoutSetup) {
-    attentionItems.push({ title: 'No active tryout', body: 'Create a tryout window before adding sessions.', color: 'var(--red)', action: openTryoutSetup });
+    attentionItems.push({ id: 'no-event', priority: 0, title: 'No active tryout', body: 'Create a tryout window before adding sessions.', color: 'var(--red)', action: openTryoutSetup, actionLabel: 'Open tryout setup' });
   }
-  if (missingScorers.length) {
-    attentionItems.push({ title: `${missingScorers.length} session${missingScorers.length > 1 ? 's' : ''} missing scorers`, body: 'Assign scorers before players arrive.', color: 'var(--amber)' });
-  }
-  if (stuckOffIce.length) {
-    attentionItems.push({ title: `${stuckOffIce.length} session${stuckOffIce.length > 1 ? 's' : ''} Off Ice`, body: 'Review scorer progress and advance when ready.', color: 'var(--blue)' });
-  }
+
+  todaySessions.forEach((session) => {
+    if (session.status === 'finalized') return;
+
+    const scorers = todayScorers[session.id];
+    const scorerDataAvailable = Array.isArray(scorers);
+    const completion = todayCompletion[session.id] || {};
+    const completionAvailable = !completion.unavailable;
+    const checkedIn = Number(completion.totals?.checked_in_count || 0);
+    const totalPlayers = Number(completion.totals?.total_players ?? session.player_count ?? 0);
+    const attendanceRecorded = Number(completion.totals?.attendance_recorded_count || 0);
+    const unresolvedAttendance = Math.max(0, totalPlayers - attendanceRecorded);
+    const scorerProgress = completion.perScorer || [];
+    const incompleteScorers = scorerProgress.filter((scorer) => Number(scorer.scores_submitted) < Number(scorer.total_players));
+    const notStarted = incompleteScorers.filter((scorer) => Number(scorer.scores_submitted) === 0 && Number(scorer.total_players) > 0);
+    const evaluationsOwed = incompleteScorers.reduce((sum, scorer) => (
+      sum + Math.max(0, Number(scorer.total_players) - Number(scorer.scores_submitted))
+    ), 0);
+
+    if (scorerDataAvailable && !scorers.length) {
+      attentionItems.push({
+        id: `missing-scorer-${session.id}`,
+        priority: session.status === 'active' ? 0 : 2,
+        title: `${session.name} has no scorer`,
+        body: session.status === 'active' ? 'This session is On Ice now and cannot collect evaluations.' : 'Assign a scorer before players take the ice.',
+        color: session.status === 'active' ? 'var(--red)' : 'var(--amber)',
+        action: openSessions,
+        actionLabel: 'Manage scorers',
+      });
+    }
+
+    if (totalPlayers === 0) {
+      attentionItems.push({
+        id: `empty-roster-${session.id}`,
+        priority: 1,
+        title: `${session.name} has no players`,
+        body: 'Review the roster assignment before this session begins.',
+        color: 'var(--amber)',
+        action: openSessions,
+        actionLabel: 'Review session',
+      });
+    }
+
+    if (completionAvailable && ['active', 'complete'].includes(session.status) && unresolvedAttendance > 0) {
+      attentionItems.push({
+        id: `attendance-${session.id}`,
+        priority: session.status === 'active' ? 0 : 1,
+        title: `${session.name}: ${unresolvedAttendance} attendance ${unresolvedAttendance === 1 ? 'status' : 'statuses'} needed`,
+        body: 'Mark each remaining player checked in, late, no-show, or excused so scoring coverage is accurate.',
+        color: session.status === 'active' ? 'var(--red)' : 'var(--amber)',
+        action: () => openSession(session),
+        actionLabel: 'Resolve attendance',
+      });
+    }
+
+    if (completionAvailable && session.status === 'active' && checkedIn > 0 && notStarted.length) {
+      const names = notStarted.map((scorer) => scorer.first_name || scorer.email).join(', ');
+      attentionItems.push({
+        id: `not-started-${session.id}`,
+        priority: 0,
+        title: `${session.name}: ${notStarted.length} scorer${notStarted.length === 1 ? '' : 's'} not started`,
+        body: `${names} ${notStarted.length === 1 ? 'has' : 'have'} submitted no evaluations for ${checkedIn} checked-in players.`,
+        color: 'var(--red)',
+        action: () => openSession(session),
+        actionLabel: 'View scorer progress',
+      });
+    }
+
+    if (completionAvailable && session.status === 'complete' && unresolvedAttendance === 0) {
+      attentionItems.push({
+        id: `off-ice-${session.id}`,
+        priority: evaluationsOwed > 0 ? 1 : 3,
+        title: evaluationsOwed > 0 ? `${session.name} is missing ${evaluationsOwed} evaluation${evaluationsOwed === 1 ? '' : 's'}` : `${session.name} is ready for Scores In`,
+        body: evaluationsOwed > 0 ? `${incompleteScorers.length} scorer${incompleteScorers.length === 1 ? '' : 's'} still have checked-in players to evaluate.` : 'Every assigned scorer has evaluated every checked-in player.',
+        color: evaluationsOwed > 0 ? 'var(--amber)' : 'var(--blue)',
+        action: () => openSession(session),
+        actionLabel: evaluationsOwed > 0 ? 'Review missing work' : 'Advance session',
+      });
+    }
+  });
+
+  attentionItems.sort((a, b) => a.priority - b.priority);
 
   // Group sessions
   const groups = { active: [], pending: [], done: [] };
@@ -563,9 +660,6 @@ export default function OverviewView({
     .slice()
     .sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''))
     .forEach((s) => groups[sessionKey(s)].push(s));
-
-  const openSession = (sess) => setSelectedSession(sess);
-  const closeSession = () => setSelectedSession(null);
 
   const handleStatusUpdate = async (sessionId, status) => {
     if (updateStatus) await updateStatus(sessionId, status);

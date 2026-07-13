@@ -79,6 +79,7 @@ export default function Admin() {
   const [todaySessions, setTodaySessions] = useState([]);
   const [todayScorers, setTodayScorers] = useState({});
   const [todayCheckIns, setTodayCheckIns] = useState({}); // { [sessionId]: { checked: N, total: M } }
+  const [todayCompletion, setTodayCompletion] = useState({});
   const [todayLoading, setTodayLoading] = useState(false);
 
   const [allSessions, setAllSessions] = useState([]);
@@ -233,33 +234,66 @@ export default function Admin() {
   useEffect(() => {
     if (!activeEvent || route.view !== 'overview') return;
     let ignore = false;
-    setTodayLoading(true);
-    api.allSessions(null, activeEvent.id, todayDate)
-      .then(async (r) => {
+    let refreshing = false;
+
+    const loadToday = async (showLoading = false) => {
+      if (refreshing) return;
+      refreshing = true;
+      if (showLoading) setTodayLoading(true);
+
+      try {
+        const r = await api.allSessions(null, activeEvent.id, todayDate);
         if (ignore) return;
         const list = (r.sessions || []).filter((s) => String(s.session_date).slice(0, 10) === todayDate);
         setTodaySessions(list);
         if (list.length) {
-          const [scorerPairs, playerPairs] = await Promise.all([
-            Promise.all(list.map((s) => api.sessionScorers(s.id).then((resp) => [s.id, resp.scorers || []]))),
-            Promise.all(list.map((s) => api.sessionPlayers(s.id).then((resp) => {
-              const players = resp.players || [];
-              return [s.id, { checked: players.filter((p) => p.checked_in).length, total: players.length }];
-            }).catch(() => [s.id, { checked: 0, total: s.player_count || 0 }]))),
+          const [scorerPairs, completionPairs] = await Promise.all([
+            Promise.all(list.map((s) => api.sessionScorers(s.id)
+              .then((resp) => [s.id, resp.scorers || []])
+              .catch(() => [s.id, null]))),
+            Promise.all(list.map((s) => api.sessionCompletion(s.id)
+              .then((resp) => [s.id, resp])
+              .catch(() => [s.id, { unavailable: true, totals: { checked_in_count: 0, total_players: Number(s.player_count) || 0 }, perScorer: [] }]))),
           ]);
           if (!ignore) {
             setTodayScorers(Object.fromEntries(scorerPairs));
-            setTodayCheckIns(Object.fromEntries(playerPairs));
+            const completions = Object.fromEntries(completionPairs);
+            setTodayCompletion(completions);
+            setTodayCheckIns(Object.fromEntries(completionPairs.map(([sessionId, completion]) => [
+              sessionId,
+              {
+                checked: completion.totals?.checked_in_count || 0,
+                total: completion.totals?.total_players || 0,
+              },
+            ])));
           }
         } else {
           setTodayScorers({});
           setTodayCheckIns({});
+          setTodayCompletion({});
         }
-      })
-      .catch(() => { if (!ignore) { setTodaySessions([]); setTodayScorers({}); setTodayCheckIns({}); } })
-      .finally(() => { if (!ignore) setTodayLoading(false); });
-    return () => { ignore = true; };
-  }, [activeEvent, route.view, todayDate]);
+      } catch (err) {
+        if (!ignore && showLoading) {
+          setTodaySessions([]);
+          setTodayScorers({});
+          setTodayCheckIns({});
+          setTodayCompletion({});
+        }
+        if (!ignore) handleAuthError(err);
+      } finally {
+        refreshing = false;
+        if (!ignore && showLoading) setTodayLoading(false);
+      }
+    };
+
+    loadToday(true);
+    const refreshTimer = window.setInterval(() => loadToday(false), 15000);
+
+    return () => {
+      ignore = true;
+      window.clearInterval(refreshTimer);
+    };
+  }, [activeEvent, route.view, todayDate, handleAuthError]);
 
   const loadAllSessions = useCallback(async (ageGroupId = null, eventIdOverride = null) => {
     const targetEventId = eventIdOverride ?? activeEvent?.id;
@@ -410,6 +444,7 @@ export default function Admin() {
       const updater = (list) => list.map((item) => (item.id === sessionId ? { ...item, status: r.session.status } : item));
       setSessions(updater);
       setAllSessions(updater);
+      setTodaySessions(updater);
     } catch (err) {
       alert(err.message);
     }
@@ -852,6 +887,7 @@ export default function Admin() {
               todaySessions={todaySessions}
               todayScorers={todayScorers}
               todayCheckIns={todayCheckIns}
+              todayCompletion={todayCompletion}
               activeEvent={activeEvent}
               openCheckIn={() => goTo('/admin/checkin')}
               openSessions={() => goTo('/admin/sessions')}
