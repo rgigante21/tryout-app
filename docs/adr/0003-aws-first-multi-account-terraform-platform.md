@@ -1,0 +1,3 @@
+# AWS-first multi-account platform managed through Terraform
+
+Rosterline will use AWS as its first cloud platform without paying an early multi-cloud abstraction tax. Management, development, and production workloads will be isolated in separate AWS accounts, with production initially empty, and Terraform reviewed through the GitHub workflow will be the authority for infrastructure; direct console changes are break-glass exceptions that must be reconciled back into code. This costs more setup effort than one shared account but establishes durable security boundaries before real youth data arrives.

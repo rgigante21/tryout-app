@@ -165,3 +165,17 @@ Admin uses URL-based routing — the `/admin` page reads the URL segment to pick
 ### Player Split Methods (`backend/utils/session-assignment.js`)
 
 Four strategies: `last_name` (A-Z alphabetic ranges), `jersey_range` (numeric min-max), `none` (all players to all sessions), `manual` (no auto-assign). Game blocks always assign all players to every session in the block regardless of split method.
+
+## Agent skills
+
+### Issue tracker
+
+Issues and planning artifacts live in this repository's GitHub Issues. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Use the standard `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, and `wontfix` vocabulary. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+This is a single-context repository using root `CONTEXT.md` and system-wide `docs/adr/`. See `docs/agents/domain.md`.

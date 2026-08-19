@@ -1,21 +1,86 @@
-# TryoutOPS
+# Rosterline
 
-A multi-tenant hockey tryout evaluation platform. Admins manage events, age groups, sessions, and player rosters. Scorers evaluate players on the ice. The platform targets hockey organizations of varying sizes and naming conventions.
+A multi-tenant youth hockey operations platform that carries a player's history from tryout evaluation into team selection, season operations, coaching, and long-term development. Tryouts are the current product wedge, not the platform boundary.
 
 ## Language
 
 ### Organization & Events
 
+**Hockey Operations Lifecycle**: The connected Rosterline journey: Evaluate → Build Teams → Activate Rosters → Communicate → Coordinate → Coach → Develop. Registration, payments, league scheduling, facility management, and generic club accounting remain outside this lifecycle.
+_Avoid_: Generic club management, SportsEngine replacement
+
 **Organization**: A hockey club or association that owns its own data, users, and branding. The top-level tenant unit.
 _Avoid_: Club, team, customer
+
+**Hockey Director**: The Organization leader accountable for hockey operations and Rosterline's primary customer and economic buyer. Coaches, team managers, players, and guardians are essential users but do not define the platform boundary when their needs conflict.
+_Avoid_: League administrator, independent coach, generic account owner
+
+**Player Identity**: The minimal Rosterline-wide identity of one player, allowing the same person to participate in multiple Organizations without being lost or conflated. It does not expose one Organization's hockey data to another.
+_Avoid_: Organization evaluation record, global scouting profile
+
+**Organization Player Record**: An Organization-owned, longitudinal record linked to one Player Identity that preserves the Organization's hockey decisions, participation, and development context across Tryout Events and Seasons. Another Organization cannot see it without an explicit sharing or transfer workflow.
+_Avoid_: Global player profile, registration row, shared cross-organization history
+
+**Hockey Operations System of Record**: Rosterline's role as the authoritative home for tryout decisions, team activation, coaching context, and player development history. External systems remain authoritative for registration, payments, league schedules, facilities, and accounting.
+_Avoid_: All-in-one club system, registration platform, SportsEngine replacement
+
+**Product North Star**: An Organization can turn Tryout Participants into activated teams and run the hockey-development year without losing decisions, context, or player history between tools.
+_Avoid_: Feature count, generic engagement
+
+**Hockey-First Product**: Rosterline's current product, design, and commercial priority is hockey from tryout through development. Multisport Tryout Operations is a future expansion opportunity, not a current parity requirement.
+_Avoid_: Fully sport-neutral platform, multisport team operations roadmap
+
+**Launch Market**: Rosterline's initial regulatory and commercial market is the United States. Canadian requirements are considered only when expansion becomes an active decision.
+_Avoid_: Simultaneous North American launch, jurisdiction-neutral compliance
+
+**Multisport Expansion Gate**: The point after the hockey evaluation foundation is reliable when a real second-sport design partner can validate whether Tryout Operations should become a multisport product.
+_Avoid_: Speculative sport abstraction, launch requirement, multisport team operations
 
 **Tryout Event**: A multi-day evaluation event tied to one Organization. Contains age groups, sessions, and players.
 _Avoid_: Tournament, camp
 
-**Local Tryout Event**: The first product wedge: one Organization running its own annual youth hockey tryout with volunteer coordinators and scorers.
-_Avoid_: Tournament operation, private evaluation service, season team management
+**Local Tryout Event**: The first product wedge: one Organization running its own annual youth hockey tryout with volunteer coordinators and scorers. It is the entry point to the broader Hockey Operations Lifecycle, not the full product boundary.
+_Avoid_: Tournament operation, private evaluation service, complete platform scope
 
 **Season Year**: The calendar year in which a Tryout Event takes place, derived from the event's `start_date`. Used to calculate valid birth years for U-level Age Groups.
+
+### Season Teams
+
+**Season**: An Organization-owned hockey operating period containing the teams, rosters, staff, events, and development work for one playing year.
+_Avoid_: Tryout Event, calendar year
+
+**Team Selection**: The finalized historical outcome of a Tryout Event that records the Organization's intended player placements. It seeds team activation but is not rewritten when later roster circumstances change.
+_Avoid_: Live roster, game roster, mutable ranking
+
+**Activated Team**: A season-specific operating group created from an approved Team Selection and belonging to exactly one Organization and one Season.
+_Avoid_: Game team, multi-year team, tryout roster draft
+
+**Team Lineage**: The connection among distinct Activated Teams that represent the same continuing hockey cohort or program across successive Seasons.
+_Avoid_: Multi-season Team, permanent roster
+
+**Roster Offer**: A proposed place for one player on an Activated Team, derived from Team Selection or a later roster decision and tracked as accepted, declined, or withdrawn before it becomes a Season Roster membership.
+_Avoid_: Automatic notification, active roster membership, registration payment
+
+**Season Roster**: The current set of players affiliated with one Activated Team. It begins from the Team Selection but may change before or during the Season without altering that historical selection.
+_Avoid_: Team Selection, Published Game Roster, permanent player placement
+
+**Roster Change**: A player addition, removal, or movement between Activated Teams that changes a Season Roster without rewriting the originating Team Selection.
+_Avoid_: Evaluation adjustment, selection rewrite
+
+**Guardian**: An adult authorized to receive family-facing team access and act on behalf of a minor player.
+_Avoid_: Player account, coach, generic contact
+
+**Team Communication**: Activated Team communication that begins with announcements, acknowledgements, availability, and event-specific discussion and ultimately includes team chat for staff and families.
+_Avoid_: Organization-wide marketing, generic social network
+
+**Communication Foundation**: The shared contact, preference, invitation, audience, delivery, acknowledgement, and outbound-message capabilities used by Team Release and later communication channels.
+_Avoid_: Team chat feature, email-only integration, marketing automation
+
+**Pre-Release Team Workspace**: The private Activated Team workspace where directors and coaches can prepare rosters, staff, schedules, and plans before families are notified.
+_Avoid_: Public team page, family announcement
+
+**Team Release**: The Hockey Director's explicit publication of all Activated Teams in one selection cohort, making their family-facing information and invitations available together.
+_Avoid_: Team creation, automatic notification, coach draft
 
 ### Age Groups
 
@@ -53,6 +118,30 @@ _Avoid_: Complete, Scoring Complete (old names — replaced)
 ### Scorer Experience
 
 **Scorer**: A user who evaluates players on the ice during a session. Typically working from a phone on the bench.
+
+**Tryout Observer**: An evaluator or tryout-assigned coach who records qualitative observations about Tryout Participants. A Tryout Observer may have note-taking permission without scoring permission.
+_Avoid_: Season coach, anonymous note author
+
+**Tryout Observation**: An authored qualitative note tied to one Tryout Participant and Tryout Event that may inform Team Selection and post-tryout feedback.
+_Avoid_: Submitted Evaluation, Season Coach Note, anonymous comment
+
+**Season Coach Note**: An authored note about a player within an Activated Team and Season, used for ongoing coaching and development rather than tryout scoring.
+_Avoid_: Tryout Observation, evaluation score, permanent global note
+
+**Player Feedback**: A curated, shareable summary created from selected evaluation evidence or Tryout Observations for a player after tryouts.
+_Avoid_: Raw evaluator notes, automatic note publication, score export
+
+**Development Focus**: An explicitly promoted area for a player to work on that can carry from tryout feedback into the Season while retaining its source context.
+_Avoid_: Raw Tryout Observation, permanent label, hidden ranking
+
+**Evaluation Draft**: An evaluator's durable, editable work for one Tryout Participant and Session before explicit submission. It does not count toward evaluation completion.
+_Avoid_: Browser-only draft, Submitted Evaluation, completed score
+
+**Evaluation Submission**: The evaluator's explicit lock of an Evaluation Draft as their completed assessment. Later corrections are exceptional and retain an audit trail.
+_Avoid_: Autosave, any score row, silent overwrite
+
+**Evaluation Completion Gate**: The rule that a Session is not evaluation-complete until every required evaluator has an acknowledged Evaluation Submission for every required Tryout Participant.
+_Avoid_: Local save, unacknowledged sync, activity from some evaluators
 
 **Player Grid**: The primary scorer interface — a grid of jersey number buttons, color-coded by score status (yellow = incomplete, green = complete). Scorers find players by jersey number (they watch a player skate, then tap their number). This is the correct interaction model — do not replace with a list view.
 
@@ -123,7 +212,10 @@ _Avoid_: General admin dashboard, spreadsheet replacement
 **Pilot Demo**: The first roadmap milestone: one Local Tryout Event shown end-to-end with credible setup, live operations, scoring, rankings, and export.
 _Avoid_: SaaS launch, generic platform demo
 
-**Seeded Demo Event**: A realistic but fictional Local Tryout Event used to demonstrate TryoutOPS without exposing real minors' data.
+**Field Pilot**: A real Tryout Event where an Organization uses Rosterline as a secondary grading system alongside its existing evaluation process. A Field Pilot validates operational trust without yet making Rosterline the sole Hockey Operations System of Record.
+_Avoid_: Pilot Demo, production launch, primary grading system
+
+**Seeded Demo Event**: A realistic but fictional Local Tryout Event used to demonstrate Rosterline without exposing real minors' data.
 _Avoid_: Real pilot data, empty sample data
 
 **Hero Age Group**: The primary Age Group used in a Seeded Demo Event walkthrough, with enough players, sessions, scorers, check-in states, scores, and results to prove operational confidence.
@@ -135,7 +227,7 @@ _Avoid_: Admin setup, spreadsheet workflow
 **Admin Setup Story**: The Pilot Demo walkthrough segment that shows how an Organization configures the Local Tryout Event before tryout night without becoming the headline live workflow.
 _Avoid_: Live dashboard, platform administration
 
-**Admin Demo Options**: The setup options shown in the Pilot Demo that prove TryoutOPS can fit an Organization's tryout process: branding, event setup, age groups, imports, session blocks, scorer assignments, check-in readiness, and export filters.
+**Admin Demo Options**: The setup options shown in the Pilot Demo that prove Rosterline can fit an Organization's tryout process: branding, event setup, age groups, imports, session blocks, scorer assignments, check-in readiness, and export filters.
 _Avoid_: Feature flag management, security internals, exhaustive settings
 
 **Check-in Gate**: The rule that only checked-in or late-arriving Tryout Participants can be scored in the Player Grid.
@@ -151,19 +243,35 @@ _Avoid_: Scoring override, bypass
 **Player Move**: A break-glass live-event action that moves a Tryout Participant from one Session to another when the assigned time slot no longer works. Default destination: next Session for the same Age Group. Cross-age-group moves are not standard but may be needed by other organizations. Scores are not carried over.
 _Avoid_: Primary scheduling workflow, session reassignment flow
 
+### Delivery & Environments
+
+**Cloud Development Environment**: The shared, non-production Rosterline environment used for continued engineering by the owner and authorized AI agents. It contains synthetic data only and may be stopped or recreated when not in use.
+_Avoid_: Staging, Field Pilot, production
+
+**Synthetic Development Data**: Fictional player, family, Organization, and evaluation data that cannot be linked to a real person. It is the only data permitted in development and CI.
+_Avoid_: De-identified production data, copied pilot data, test customer data
+
+**Pilot Readiness Gate**: The explicit security, privacy, reliability, recovery, and operational threshold Rosterline must pass before a Field Pilot or any use of real youth data.
+_Avoid_: Successful deployment, feature-complete milestone, Production Environment
+
+**Production Environment**: The isolated Rosterline environment authorized to hold real Organization and youth data after the Pilot Readiness Gate is satisfied.
+_Avoid_: Cloud Development Environment, Field Pilot
+
 ## Relationships
 
 - An **Organization** owns many **Tryout Events**
-- An **Organization** owns many **Users**
-- A **Local Tryout Event** is the primary commercial wedge for TryoutOPS
+- An **Organization** owns many **Organization Memberships** and **Organization Player Records**
+- A **Player Identity** can be linked to private **Organization Player Records** in multiple **Organizations**
+- An **Account** can have memberships in multiple **Organizations** and Guardian Relationships to multiple Player Identities
+- A **Local Tryout Event** is the primary commercial wedge for Rosterline
 - An email address may have one **Organization Membership** per **Organization**
 - **Membership Creation** creates an **Organization Membership** inside exactly one **Organization**
 - **Membership Activation** follows **Membership Creation**
-- **Membership Recovery** applies to exactly one **Organization Membership**
+- **Account Recovery** applies to exactly one **Account**
 - An **Organization Lookup** resolves one **Organization Login Code** to one **Organization**
 - An **Organization Login Code Alias** resolves to the same **Organization** as its current **Organization Login Code**
 - An **Organization Lookup** leads to one **Organization Sign-In Page**
-- A **User** signs in through exactly one **Organization Login Context**
+- An **Account** accesses an **Organization** through an **Organization Membership**
 - **Manual Organization Provisioning** creates the first **Organization Login Context** for an early pilot
 - An **Organization-Scoped Session** is valid for exactly one **Organization**
 - A **Revocable Session** allows logout, password reset, or membership disablement to invalidate an **Organization-Scoped Session**
@@ -205,25 +313,43 @@ _Avoid_: Primary scheduling workflow, session reassignment flow
 
 ### Multi-Tenancy & Feature Flags
 
-**User**: A person who signs in to one Organization to administer, coordinate, or score Tryout Events.
-_Avoid_: Account
+**Account**: A Rosterline-wide sign-in identity anchored to a verified email address. One Account can hold roles in multiple Organizations and Guardian Relationships to multiple Player Identities.
+_Avoid_: Organization Membership, Player Identity, tenant-specific credential
 
-**Organization Membership**: A User record inside one Organization, with its own role and credentials for that Organization.
-_Avoid_: Global identity
+**Organization Membership**: The roles and permissions one Account holds inside one Organization.
+_Avoid_: Account, global role, separate login
+
+**Guardian Relationship**: An authorized link between one Account and one Player Identity that grants family-facing access for that player.
+_Avoid_: Organization Membership, shared password, player login
+
+**Federated Sign-In**: Authentication where Google or Microsoft verifies an Account holder through OpenID Connect while Rosterline retains responsibility for its own Account, access, and session records.
+_Avoid_: Organization password, email-only identity matching
+
+**Magic-Link Sign-In**: A passwordless fallback where control of a verified email address authenticates an Account through a short-lived, single-use link or code.
+_Avoid_: Permanent password, reusable invitation link
+
+**Managed Identity Service**: The external service responsible for federated sign-in, magic links, account linking, recovery, and future authentication methods. Rosterline still owns Accounts, authorization relationships, sessions, and audit history.
+_Avoid_: Rosterline password store, outsourced product authorization
+
+**Global Sign-In**: The Rosterline entry flow that authenticates one Account before selecting an Organization or Team workspace. Invitation links may preserve workspace context, but the workspace never grants access without a valid Organization Membership or Guardian Relationship.
+_Avoid_: Organization Login Code as security boundary, globally shared tenant data
+
+**Access Invitation**: An Organization-authorized invitation that a verified Account claims to receive an Organization Membership or Guardian Relationship. Creating an Account alone grants no Organization or Player access.
+_Avoid_: Open membership, self-attached guardian, automatic authorization
 
 **Membership Creation**: The controlled creation of an Organization Membership by an admin or approved Organization workflow.
 _Avoid_: Self-registration, public signup
 
-**Membership Activation**: The first-time password setup step that lets a newly created Organization Membership become usable for sign-in.
-_Avoid_: Admin-set permanent password
+**Membership Activation**: The step where a verified Account accepts or claims a newly created Organization Membership.
+_Avoid_: Separate Organization password, admin-set permanent password
 
-**Membership Recovery**: The Organization-scoped password reset flow for an existing Organization Membership.
-_Avoid_: Global password reset
+**Account Recovery**: The global recovery flow that restores access to one Account without changing its Organization Memberships or Guardian Relationships.
+_Avoid_: Organization-scoped password reset, membership recovery
 
-**Manual Organization Provisioning**: The early-pilot process where TryoutOPS staff create an Organization and its first admin before the Organization signs in.
+**Manual Organization Provisioning**: The early-pilot process where Rosterline staff create an Organization and its first admin before the Organization signs in.
 _Avoid_: Public signup, self-service onboarding
 
-**Organization Login Context**: The Organization boundary selected before credentials are checked; a User authenticates inside exactly one Organization context.
+**Organization Login Context**: The Organization boundary selected before credentials are checked; an Account authenticates inside exactly one Organization context.
 _Avoid_: Tenant login, global login
 
 **Organization-Scoped Session**: A signed-in browser session that is valid only for the Organization Login Context recorded at authentication time.
@@ -238,16 +364,16 @@ _Avoid_: Shared tenant cookie
 **State-Changing Request Protection**: A CSRF defense for authenticated requests that create, update, or delete Organization data.
 _Avoid_: CORS-only protection
 
-**Organization Login Code**: A short, stable, unique code that a User enters to find their Organization before signing in.
+**Organization Login Code**: A short, stable, unique code that an Account holder enters to find their Organization before signing in.
 _Avoid_: Organization ID name, org name, tenant code
 
 **Organization Login Code Alias**: A previous Organization Login Code that temporarily redirects to the current Organization Login Context after a controlled rename.
 _Avoid_: Duplicate login code
 
-**Organization Lookup**: The pre-login step where a User enters an Organization Login Code to find the correct Organization-branded sign-in page.
+**Organization Lookup**: The pre-login step where an Account holder enters an Organization Login Code to find the correct Organization-branded sign-in page.
 _Avoid_: Authentication, login
 
-**Organization Sign-In Page**: The Organization-branded page where a User enters credentials after an Organization Lookup has resolved the Organization Login Context.
+**Organization Sign-In Page**: The Organization-branded page where an Account holder enters credentials after an Organization Lookup has resolved the Organization Login Context.
 _Avoid_: Global login page
 
 **Generic Credential Login**: A sign-in form that checks email and password without first resolving an Organization Login Context. This is not part of the product model.
