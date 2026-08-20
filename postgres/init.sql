@@ -1,6 +1,6 @@
 -- Hockey Tryout App - Database Schema
 -- Runs automatically on first postgres container start.
--- Reflects the fully-migrated state (migrations 001–007 applied).
+-- Reflects the fully-migrated state (migrations 001–010 applied).
 -- For in-place upgrades run the individual migration files.
 
 -- ─────────────────────────────────────────
@@ -8,12 +8,16 @@
 -- ─────────────────────────────────────────
 
 CREATE TABLE organizations (
-  id          SERIAL PRIMARY KEY,
-  name        VARCHAR(255) NOT NULL,
-  subdomain   VARCHAR(100) NOT NULL,
-  slug        VARCHAR(100) NOT NULL,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  archived_at TIMESTAMPTZ,
+  id           SERIAL PRIMARY KEY,
+  name         VARCHAR(255) NOT NULL,
+  subdomain    VARCHAR(100) NOT NULL,
+  slug         VARCHAR(100) NOT NULL,
+  accent_color VARCHAR(7) DEFAULT '#6B1E2E',
+  -- New feature flags are added to this JSONB object, not as boolean columns.
+  -- See docs/adr/0001-org-feature-flags-jsonb.md
+  features     JSONB NOT NULL DEFAULT '{}',
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  archived_at  TIMESTAMPTZ,
   CONSTRAINT organizations_subdomain_key UNIQUE (subdomain),
   CONSTRAINT organizations_slug_key      UNIQUE (slug)
 );
@@ -44,6 +48,12 @@ CREATE TABLE age_groups (
   code                VARCHAR(20) NOT NULL,
   sort_order          INT DEFAULT 0,
   default_template_id INT,  -- FK added after evaluation_templates is created
+  -- Birth year validation: U-level groups store max_age (valid years derived at
+  -- runtime from the event season); birth-year groups store the range explicitly.
+  -- All three null = no birth year validation.
+  max_age             INT,
+  birth_year_min      INT,
+  birth_year_max      INT,
   CONSTRAINT age_groups_code_org_uniq UNIQUE (code, organization_id)
 );
 
@@ -663,8 +673,8 @@ CREATE POLICY tenant_isolation ON roster_exports
 -- ─────────────────────────────────────────
 
 -- Default org: Weymouth Youth Hockey
-INSERT INTO organizations (id, name, subdomain, slug)
-VALUES (1, 'Weymouth Youth Hockey', 'weymouth', 'weymouth');
+INSERT INTO organizations (id, name, subdomain, slug, features)
+VALUES (1, 'Weymouth Youth Hockey', 'weymouth', 'weymouth', '{"multi_rink": false}');
 
 SELECT setval('organizations_id_seq', 1);
 
@@ -699,12 +709,12 @@ INSERT INTO evaluation_criteria (template_id, key, label, description, weight, s
   (3, 'game_impact',  'Game Impact / Readiness', 'Overall effectiveness in game situations',                1.50, 5);
 
 -- Age groups (with org + template FKs now that both exist)
-INSERT INTO age_groups (id, organization_id, name, code, sort_order, default_template_id) VALUES
-  (1, 1, 'Mites - U8',    'mites',   1, 1),
-  (2, 1, 'Squirts - U10', 'squirts', 2, 1),
-  (3, 1, 'Peewees - U12', 'peewees', 3, 2),
-  (4, 1, 'Bantams - U14', 'bantams', 4, 3),
-  (5, 1, 'Midgets - U16', 'midgets', 5, 3);
+INSERT INTO age_groups (id, organization_id, name, code, sort_order, default_template_id, max_age) VALUES
+  (1, 1, 'Mites - U8',    'mites',   1, 1,  8),
+  (2, 1, 'Squirts - U10', 'squirts', 2, 1, 10),
+  (3, 1, 'Peewees - U12', 'peewees', 3, 2, 12),
+  (4, 1, 'Bantams - U14', 'bantams', 4, 3, 14),
+  (5, 1, 'Midgets - U16', 'midgets', 5, 3, 16);
 
 SELECT setval('age_groups_id_seq', 5);
 
