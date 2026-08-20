@@ -64,7 +64,9 @@ The Postgres superuser is `postgres` (no separate `tryout` role). Database name 
 
 ## Migrations
 
-Applied in order. Fresh installs pick up everything via `postgres/init.sql` automatically.
+Applied in order. Fresh installs pick up everything via `postgres/init.sql` automatically — that file is maintained as the fully-migrated state, so **any new migration must also be folded into it** or `docker compose down -v` produces a DB the app cannot run against.
+
+Note the three files numbered `009`: they touch disjoint tables, so relative order between them does not matter. Do not add a fourth `009`.
 
 | File | Status | What it does |
 |---|---|---|
@@ -75,12 +77,17 @@ Applied in order. Fresh installs pick up everything via `postgres/init.sql` auto
 | `005_registration_model.sql` | ✅ Applied | player_event_registrations table; dual-writes roster/score references while preserving legacy player_id links |
 | `006_import_batch_tracking.sql` | ✅ Applied | import_batches + import_batch_rows; commit step reads pre-validated mapped_data instead of re-parsing |
 | `007_multi_tenant_foundation.sql` | ✅ Applied | organizations table; organization_id on Class 1 tables; RLS policies; consistency triggers; composite indexes |
-| `008_org_branding.sql` | ✅ Applied | accent_color (and related branding columns) on organizations |
+| `008_org_branding.sql` | ✅ Applied | accent_color on organizations (default `#6B1E2E`) |
+| `009_age_group_birth_year_model.sql` | ✅ Applied | max_age, birth_year_min/max on age_groups; U-level seeds for org 1. All three null = no birth year validation |
+| `009_roster_builder_exports.sql` | ✅ Applied | roster_teams, roster_team_players, roster_exports |
+| `009_session_planning_automation.sql` | ✅ Applied | widens sessions.last_name_start/end to VARCHAR(255) for full-name split boundaries |
+| `010_org_feature_flags.sql` | ✅ Applied | features JSONB on organizations; new flags go in this object, not new columns (see `docs/adr/0001-org-feature-flags-jsonb.md`) |
 
 ## Default Credentials
 
 - URL: `http://localhost:3000`
 - Admin login: `admin@tryouts.local` / `Admin1234!`
+- Organization login code: `weymouth` — required by `POST /api/auth/login` alongside email/password (the sign-in page resolves it at `/login/:loginCode`)
 - Mailhog UI (catches all outgoing email): `http://localhost:8025`
 
 ## Architecture
